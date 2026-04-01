@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
     <title>Таблица рекордов | Pigs Team</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -20,8 +19,21 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
+        }
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            display: block;
         }
         .leaderboard-container {
+            position: relative;
+            z-index: 2;
             background: rgba(0,0,0,0.6);
             backdrop-filter: blur(8px);
             border-radius: 48px;
@@ -108,6 +120,9 @@
     </style>
 </head>
 <body>
+
+<canvas id="bg-canvas"></canvas>
+
 <div class="leaderboard-container">
     <h1><i class="fas fa-trophy"></i> Таблица рекордов</h1>
     <div id="leaderboardTable">
@@ -123,31 +138,138 @@
 </div>
 
 <script>
-    // Функция для безопасного получения данных из localStorage
+    // ==================== ФОН (частицы + свиньи) ====================
+    const bgCanvas = document.getElementById('bg-canvas');
+    const bgCtx = bgCanvas.getContext('2d');
+    let bgWidth, bgHeight;
+    let particles = [];
+    let flyingPigs = [];
+    let mouseX = 0, mouseY = 0;
+
+    function resizeBgCanvas() {
+        bgWidth = window.innerWidth;
+        bgHeight = window.innerHeight;
+        bgCanvas.width = bgWidth;
+        bgCanvas.height = bgHeight;
+    }
+    window.addEventListener('resize', resizeBgCanvas);
+    resizeBgCanvas();
+
+    const PARTICLE_COUNT = 45;
+    class Particle {
+        constructor() {
+            this.x = Math.random() * bgWidth;
+            this.y = Math.random() * bgHeight;
+            this.size = Math.random() * 2 + 1;
+            this.speedX = (Math.random() - 0.5) * 0.4;
+            this.speedY = (Math.random() - 0.5) * 0.4;
+            this.opacity = Math.random() * 0.5 + 0.2;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            if (this.x < 0) this.x = bgWidth;
+            if (this.x > bgWidth) this.x = 0;
+            if (this.y < 0) this.y = bgHeight;
+            if (this.y > bgHeight) this.y = 0;
+            const dx = mouseX - this.x;
+            const dy = mouseY - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 100) {
+                const angle = Math.atan2(dy, dx);
+                const force = (100 - dist) / 100 * 1.2;
+                this.x -= Math.cos(angle) * force;
+                this.y -= Math.sin(angle) * force;
+            }
+        }
+        draw() {
+            bgCtx.beginPath();
+            bgCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            bgCtx.fillStyle = `rgba(255, 107, 107, ${this.opacity})`;
+            bgCtx.fill();
+        }
+    }
+
+    const PIG_COUNT = 6;
+    class FlyingPig {
+        constructor() {
+            this.x = Math.random() * bgWidth;
+            this.y = Math.random() * bgHeight;
+            this.size = Math.random() * 28 + 20;
+            this.speedX = (Math.random() - 0.5) * 0.3;
+            this.speedY = (Math.random() - 0.5) * 0.3;
+            this.opacity = Math.random() * 0.4 + 0.2;
+            this.rotation = Math.random() * Math.PI * 2;
+            this.rotationSpeed = (Math.random() - 0.5) * 0.01;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            this.rotation += this.rotationSpeed;
+            const dx = mouseX - this.x;
+            const dy = mouseY - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 100) {
+                const angle = Math.atan2(dy, dx);
+                const force = (100 - dist) / 100 * 1.0;
+                this.x -= Math.cos(angle) * force;
+                this.y -= Math.sin(angle) * force;
+            }
+            if (this.x < -60) this.x = bgWidth + 60;
+            if (this.x > bgWidth + 60) this.x = -60;
+            if (this.y < -60) this.y = bgHeight + 60;
+            if (this.y > bgHeight + 60) this.y = -60;
+        }
+        draw() {
+            bgCtx.save();
+            bgCtx.translate(this.x, this.y);
+            bgCtx.rotate(this.rotation);
+            bgCtx.font = `${this.size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            bgCtx.shadowBlur = 6;
+            bgCtx.shadowColor = "rgba(255,107,107,0.5)";
+            bgCtx.globalAlpha = this.opacity;
+            bgCtx.fillStyle = "#ffb347";
+            bgCtx.fillText("🐷", 0, 0);
+            bgCtx.globalAlpha = 1;
+            bgCtx.shadowBlur = 0;
+            bgCtx.restore();
+        }
+    }
+
+    function initBackground() {
+        particles = [];
+        for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(new Particle());
+        flyingPigs = [];
+        for (let i = 0; i < PIG_COUNT; i++) flyingPigs.push(new FlyingPig());
+    }
+    initBackground();
+
+    function animateBackground() {
+        if (!bgCtx) return;
+        bgCtx.clearRect(0, 0, bgWidth, bgHeight);
+        particles.forEach(p => { p.update(); p.draw(); });
+        flyingPigs.forEach(p => { p.update(); p.draw(); });
+        requestAnimationFrame(animateBackground);
+    }
+    animateBackground();
+
+    document.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+    document.addEventListener('touchmove', (e) => { const touch = e.touches[0]; mouseX = touch.clientX; mouseY = touch.clientY; });
+    document.addEventListener('touchend', () => { mouseX = -1000; mouseY = -1000; });
+
+    // ==================== ТАБЛИЦА РЕКОРДОВ ====================
     function getLeaderboard() {
         try {
             let raw = localStorage.getItem('pigLeaderboard');
             if (!raw) return [];
             let data = JSON.parse(raw);
-            // Проверяем, что data — массив
             if (!Array.isArray(data)) return [];
-            // Фильтруем и приводим каждую запись к нужному формату
             data = data.filter(entry => entry && typeof entry === 'object' && typeof entry.name === 'string' && typeof entry.score === 'number');
-            // Сортируем по убыванию очков
             data.sort((a, b) => b.score - a.score);
-            // Оставляем топ-10
             return data.slice(0, 10);
         } catch (e) {
             console.error("Ошибка чтения таблицы рекордов:", e);
             return [];
-        }
-    }
-
-    function saveLeaderboard(data) {
-        try {
-            localStorage.setItem('pigLeaderboard', JSON.stringify(data));
-        } catch (e) {
-            console.error("Ошибка сохранения таблицы рекордов:", e);
         }
     }
 
@@ -165,8 +287,6 @@
             if (index === 0) rankClass = 'rank-1';
             if (index === 1) rankClass = 'rank-2';
             if (index === 2) rankClass = 'rank-3';
-            let date = entry.date || '';
-            // Безопасное экранирование имени
             let safeName = entry.name.replace(/[&<>]/g, function(m) {
                 if (m === '&') return '&amp;';
                 if (m === '<') return '&lt;';
@@ -174,11 +294,11 @@
                 return m;
             });
             html += `<tr class="${rankClass}">
-                        <td>${index + 1}</td>
-                        <td>${safeName}</td>
-                        <td>${entry.score}</td>
-                        <td>${date}</td>
-                     </tr>`;
+                         <td>${index + 1}</td>
+                         <td>${safeName}</td>
+                         <td>${entry.score}</td>
+                         <td>${entry.date || ''}</td>
+                      </tr>`;
         });
         html += '</table>';
         container.innerHTML = html;
@@ -187,6 +307,7 @@
     function resetLeaderboard() {
         if (confirm('Сбросить таблицу рекордов? Это действие нельзя отменить.')) {
             localStorage.removeItem('pigLeaderboard');
+            localStorage.removeItem('pigPasswords');
             loadLeaderboard();
         }
     }
