@@ -195,7 +195,7 @@
     <div class="game-header">
         <div class="score-box">🐷 <span id="score">0</span></div>
         <div class="best-box">🏆 <span id="best">0</span></div>
-        <div class="miss-box">❌ <span id="miss">0</span> / 6</div>
+        <div class="miss-box">❌ <span id="miss">0</span> / 4</div>
         <div class="speed-box">⚡ <span id="speedMultiplier">1.0</span>x</div>
     </div>
     <div class="canvas-wrapper">
@@ -392,13 +392,44 @@
     let spawnInterval;
     let animationId;
     let missed = 0;
-    const MAX_MISS = 4;
+    const MAX_MISS = 4;                     // всего 4 ошибки
     let finalScore = 0;
     
-    // Динамическая сложность
+    // Динамическая сложность – множители по порогам
     let currentSpeedMultiplier = 1.0;
     const MAX_SPEED_MULT = 2.0;
-    const SPEED_STEP = 0.15;
+    // Пороги и множители
+    const speedThresholds = [
+        { score: 15, mult: 1.1 },
+        { score: 25, mult: 1.2 },
+        { score: 40, mult: 1.3 },
+        { score: 75, mult: 1.4 },
+        { score: 90, mult: 1.5 },
+        { score: 115, mult: 1.6 }
+        // дальнейшие: при 140 -> 1.7, 170 -> 1.8, 200 -> 1.9, 230 -> 2.0
+    ];
+
+    function getSpeedMultiplier(currentScore) {
+        let mult = 1.0;
+        for (let i = 0; i < speedThresholds.length; i++) {
+            if (currentScore >= speedThresholds[i].score) {
+                mult = speedThresholds[i].mult;
+            } else {
+                break;
+            }
+        }
+        // после последнего порога добавляем плавный рост до 2.0
+        if (currentScore >= 140) mult = Math.min(2.0, 1.6 + Math.floor((currentScore - 115) / 30) * 0.1);
+        return Math.min(mult, MAX_SPEED_MULT);
+    }
+
+    function updateSpeedMultiplier() {
+        let newMult = getSpeedMultiplier(score);
+        if (newMult !== currentSpeedMultiplier) {
+            currentSpeedMultiplier = newMult;
+            document.getElementById('speedMultiplier').innerText = currentSpeedMultiplier.toFixed(2);
+        }
+    }
 
     // Звуки
     const sounds = [
@@ -489,15 +520,6 @@
                 addScore(item.type.points);
                 playOink();
             }
-        }
-    }
-
-    function updateSpeedMultiplier() {
-        let newMult = 1.0 + Math.floor(score / 20) * SPEED_STEP;
-        newMult = Math.min(newMult, MAX_SPEED_MULT);
-        if (newMult !== currentSpeedMultiplier) {
-            currentSpeedMultiplier = newMult;
-            document.getElementById('speedMultiplier').innerText = currentSpeedMultiplier.toFixed(2);
         }
     }
 
