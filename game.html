@@ -52,7 +52,7 @@
             margin-bottom: 20px;
             padding: 0 16px;
         }
-        .score-box, .best-box, .miss-box, .speed-box {
+        .score-box, .best-box, .miss-box {
             background: rgba(0,0,0,0.6);
             border-radius: 40px;
             padding: 8px 20px;
@@ -61,15 +61,12 @@
             color: #ffb347;
             border: 1px solid #ff6b6b;
         }
-        .score-box span, .best-box span, .miss-box span, .speed-box span {
+        .score-box span, .best-box span, .miss-box span {
             color: white;
             font-size: 0.9rem;
         }
         .miss-box {
             color: #ff8888;
-        }
-        .speed-box {
-            color: #88ff88;
         }
         .canvas-wrapper {
             display: flex;
@@ -105,24 +102,36 @@
             text-align: center;
             box-shadow: 0 0 20px rgba(255,107,107,0.5);
         }
-        .speed-popup {
-            position: absolute;
-            top: 30%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(8px);
-            padding: 8px 20px;
+        .save-score-panel {
+            margin-top: 20px;
+            text-align: center;
+            background: rgba(0,0,0,0.5);
             border-radius: 40px;
-            font-size: 1.4rem;
+            padding: 12px;
+            display: none;
+        }
+        .save-score-panel input {
+            padding: 10px 16px;
+            border-radius: 40px;
+            border: none;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            margin-right: 10px;
+            width: 180px;
+        }
+        .save-score-panel input::placeholder {
+            color: #ccc;
+        }
+        .save-score-panel button {
+            background: #ff6b6b;
+            color: #0a0a0c;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 40px;
             font-weight: bold;
-            color: #ffb347;
-            border: 1px solid #ff6b6b;
-            white-space: nowrap;
-            z-index: 20;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.2s;
+            cursor: pointer;
         }
         .controls {
             display: flex;
@@ -158,9 +167,10 @@
             border-bottom: 1px dashed;
         }
         @media (max-width: 600px) {
-            .score-box, .best-box, .miss-box, .speed-box { font-size: 1rem; padding: 4px 12px; }
+            .score-box, .best-box, .miss-box { font-size: 1rem; padding: 4px 12px; }
             button { padding: 6px 18px; }
             .game-over-message { font-size: 1.4rem; padding: 12px 24px; white-space: nowrap; }
+            .save-score-panel input { width: 140px; }
         }
     </style>
 </head>
@@ -173,16 +183,18 @@
         <div class="score-box">🐷 <span id="score">0</span></div>
         <div class="best-box">🏆 <span id="best">0</span></div>
         <div class="miss-box">❌ <span id="miss">0</span> / 5</div>
-        <div class="speed-box">⚡ <span id="speedMultiplier">1.0</span>x</div>
     </div>
     <div class="canvas-wrapper">
         <canvas id="gameCanvas" width="900" height="600" style="width:100%; height:auto; max-width:900px; aspect-ratio:900/600"></canvas>
         <div id="gameOverMsg" class="game-over-message" style="display: none;">GAME OVER</div>
-        <div id="speedPopup" class="speed-popup" style="opacity:0;">SPEED UP!</div>
+    </div>
+    <div id="saveScorePanel" class="save-score-panel">
+        <input type="text" id="playerName" placeholder="Твой ник (макс 15 символов)" maxlength="15">
+        <button id="saveScoreBtn">Сохранить рекорд в таблицу</button>
     </div>
     <div class="controls">
         <button id="resetGame">Новая игра</button>
-        <button id="shareScore">🏆 Поделиться рекордом</button>
+        <button id="leaderboardBtn">🏆 Таблица рекордов</button>
         <button id="backToSite" onclick="window.location.href='index.html'">На главную</button>
     </div>
     <div class="back-link">
@@ -321,6 +333,7 @@
     let animationId;
     let missed = 0;
     const MAX_MISS = 5;
+    let finalScore = 0; // для сохранения после game over
 
     // Звуки хрюканья (три варианта)
     const sounds = [
@@ -330,7 +343,6 @@
     ];
     sounds.forEach(s => s.load());
 
-    // Типы фруктов (обычные и золотой бонус)
     const ITEM_TYPES = [
         { emoji: '🌽', points: 1, rare: false },
         { emoji: '🍎', points: 1, rare: false },
@@ -339,16 +351,15 @@
     ];
 
     class FoodItem {
-        constructor(x, y, type, speedMultiplier, chaosFactor) {
+        constructor(x, y, type) {
             this.x = x;
             this.y = y;
             this.type = type;
             this.radius = 28;
-            // базовая скорость + бонус для золотого
-            let baseSpeed = 150 + Math.random() * 80; // пикселей в секунду
-            this.speedY = (baseSpeed * (type.rare ? 1.4 : 1.0)) * speedMultiplier;
-            // боковая скорость с хаосом
-            let sideSpeed = (Math.random() - 0.5) * (80 + chaosFactor * 100);
+            // постоянная скорость (без динамического множителя)
+            let baseSpeed = 150 + Math.random() * 80;
+            this.speedY = baseSpeed * (type.rare ? 1.4 : 1.0);
+            let sideSpeed = (Math.random() - 0.5) * 80;
             if (type.rare) sideSpeed *= 1.5;
             this.speedX = sideSpeed;
         }
@@ -376,36 +387,7 @@
     let targetPigX = canvas.width / 2;
     const pigY = canvas.height - 60;
     const pigRadius = 36;
-    const PIG_SPEED = 600; // пикселей в секунду
-
-    // Динамическая сложность
-    let currentSpeedMultiplier = 1.0;
-    let chaosFactor = 0;
-    const SPEED_INCREASE_STEP = 0.28;
-    const SPAWN_BASE_INTERVAL = 800;
-    const MIN_SPAWN_INTERVAL = 300;
-
-    function updateDifficulty() {
-        let newMultiplier = 1 + Math.floor(score / 12) * SPEED_INCREASE_STEP;
-        newMultiplier = Math.min(newMultiplier, 3.2);
-        if (newMultiplier > currentSpeedMultiplier && score > 0) {
-            const popup = document.getElementById('speedPopup');
-            popup.style.opacity = '1';
-            setTimeout(() => { popup.style.opacity = '0'; }, 1000);
-        }
-        currentSpeedMultiplier = newMultiplier;
-        chaosFactor = Math.min(1.2, (currentSpeedMultiplier - 1) * 0.6);
-        document.getElementById('speedMultiplier').innerText = currentSpeedMultiplier.toFixed(1);
-        
-        let interval = SPAWN_BASE_INTERVAL / (1 + Math.floor(score / 15) * 0.35);
-        interval = Math.max(interval, MIN_SPAWN_INTERVAL);
-        if (spawnInterval) {
-            clearInterval(spawnInterval);
-            spawnInterval = setInterval(() => {
-                if (gameRunning) spawnItem();
-            }, interval);
-        }
-    }
+    const PIG_SPEED = 600;
 
     function setTargetPosition(clientX) {
         const rect = canvas.getBoundingClientRect();
@@ -454,14 +436,9 @@
         } else {
             type = ITEM_TYPES[Math.floor(Math.random() * 3)];
         }
-        let x;
-        if (currentSpeedMultiplier > 2.0 && Math.random() > 0.5) {
-            x = (Math.random() < 0.5) ? 40 + Math.random() * 80 : canvas.width - 80 - Math.random() * 80;
-        } else {
-            x = 40 + Math.random() * (canvas.width - 80);
-        }
+        let x = 40 + Math.random() * (canvas.width - 80);
         const y = -20;
-        items.push(new FoodItem(x, y, type, currentSpeedMultiplier, chaosFactor));
+        items.push(new FoodItem(x, y, type));
     }
 
     function addScore(points) {
@@ -472,7 +449,6 @@
             localStorage.setItem('pigGameBest', bestScore);
             document.getElementById('best').innerText = bestScore;
         }
-        updateDifficulty();
     }
 
     function addMiss() {
@@ -494,6 +470,11 @@
         gameRunning = false;
         if (spawnInterval) clearInterval(spawnInterval);
         document.getElementById('gameOverMsg').style.display = 'block';
+        finalScore = score;
+        // показываем панель сохранения рекорда, если есть очки
+        if (finalScore > 0) {
+            document.getElementById('saveScorePanel').style.display = 'block';
+        }
     }
 
     let lastTimestamp = 0;
@@ -505,7 +486,6 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Обновляем и рисуем предметы с дельтой времени
         for (let i=0; i<items.length; i++) {
             const item = items[i];
             const alive = item.update(deltaTime);
@@ -518,27 +498,16 @@
             }
         }
 
-        // Движение свиньи
         if (gameRunning) {
             updatePigPosition(deltaTime);
         }
 
-        // Рисуем свинью
         ctx.save();
-        if (currentSpeedMultiplier > 2.2) {
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = "#ff4444";
-            ctx.fillStyle = "#ffaa77";
-        } else if (currentSpeedMultiplier > 1.5) {
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = "#ff6b6b";
-        } else {
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = "#ff6b6b";
-        }
         ctx.font = '72px "Segoe UI Emoji", "Apple Color Emoji"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = "#ff6b6b";
         ctx.fillText("🐷", pigX, pigY);
         ctx.restore();
 
@@ -557,16 +526,13 @@
         gameRunning = true;
         pigX = canvas.width / 2;
         targetPigX = canvas.width / 2;
-        currentSpeedMultiplier = 1.0;
-        chaosFactor = 0;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
-        document.getElementById('speedMultiplier').innerText = '1.0';
         document.getElementById('gameOverMsg').style.display = 'none';
-        let interval = SPAWN_BASE_INTERVAL;
+        document.getElementById('saveScorePanel').style.display = 'none';
         spawnInterval = setInterval(() => {
             if (gameRunning) spawnItem();
-        }, interval);
+        }, 700);
         if (animationId) cancelAnimationFrame(animationId);
         lastTimestamp = 0;
         animationId = requestAnimationFrame(animate);
@@ -579,32 +545,34 @@
         items = [];
         score = 0;
         missed = 0;
-        currentSpeedMultiplier = 1.0;
-        chaosFactor = 0;
         pigX = canvas.width / 2;
         targetPigX = canvas.width / 2;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
-        document.getElementById('speedMultiplier').innerText = '1.0';
         document.getElementById('gameOverMsg').style.display = 'none';
+        document.getElementById('saveScorePanel').style.display = 'none';
         startGame();
     }
 
-    function shareScore() {
-        const text = `🐷 Мои рекорд в игре "Собери корм" Pigs Team: ${bestScore} очков! Сможешь побить? Играть: ${window.location.href}`;
-        if (navigator.share) {
-            navigator.share({
-                title: 'Мой рекорд в Pigs Team',
-                text: text,
-                url: window.location.href
-            }).catch(err => console.log('Share failed', err));
-        } else {
-            navigator.clipboard.writeText(text).then(() => {
-                alert('Ссылка с рекордом скопирована! Отправь другу.');
-            }).catch(() => {
-                alert('Не удалось скопировать, но твой рекорд: ' + bestScore);
-            });
-        }
+    function saveScoreToLeaderboard() {
+        const nameInput = document.getElementById('playerName');
+        let playerName = nameInput.value.trim();
+        if (!playerName) playerName = "Аноним";
+        if (playerName.length > 15) playerName = playerName.substring(0,15);
+        
+        let leaderboard = JSON.parse(localStorage.getItem('pigLeaderboard')) || [];
+        leaderboard.push({ name: playerName, score: finalScore, date: new Date().toLocaleDateString() });
+        leaderboard.sort((a,b) => b.score - a.score);
+        leaderboard = leaderboard.slice(0, 10);
+        localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
+        
+        alert(`Рекорд ${finalScore} очков сохранён!`);
+        nameInput.value = '';
+        document.getElementById('saveScorePanel').style.display = 'none';
+    }
+
+    function openLeaderboard() {
+        window.location.href = 'leaderboard.html';
     }
 
     function resizeGameCanvas() {
@@ -627,7 +595,8 @@
     });
 
     document.getElementById('resetGame').addEventListener('click', resetGame);
-    document.getElementById('shareScore').addEventListener('click', shareScore);
+    document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
+    document.getElementById('saveScoreBtn').addEventListener('click', saveScoreToLeaderboard);
 
     document.getElementById('best').innerText = bestScore;
     startGame();
