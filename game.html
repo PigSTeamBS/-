@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <title>Игра «Собери корм» | Pigs Team</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at 20% 40%, #1f1b24, #030303);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .game-container {
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+            border-radius: 48px;
+            padding: 20px;
+            border: 1px solid rgba(255,107,107,0.5);
+            max-width: 1000px;
+            width: 100%;
+        }
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 20px;
+            padding: 0 16px;
+        }
+        .score-box, .best-box {
+            background: rgba(0,0,0,0.6);
+            border-radius: 40px;
+            padding: 8px 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ffb347;
+            border: 1px solid #ff6b6b;
+        }
+        .score-box span, .best-box span {
+            color: white;
+            font-size: 1rem;
+        }
+        .canvas-wrapper {
+            display: flex;
+            justify-content: center;
+        }
+        canvas {
+            background: rgba(20,20,30,0.5);
+            border-radius: 32px;
+            cursor: crosshair;
+            box-shadow: 0 0 20px rgba(255,107,107,0.3);
+            width: 100%;
+            height: auto;
+            border: 1px solid #ff6b6b;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 24px;
+        }
+        button {
+            background: rgba(255,107,107,0.2);
+            border: 1px solid #ff6b6b;
+            color: #ffb347;
+            font-weight: bold;
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            backdrop-filter: blur(4px);
+        }
+        button:hover {
+            background: rgba(255,107,107,0.4);
+            transform: scale(1.02);
+        }
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .back-link a {
+            color: #ffb347;
+            text-decoration: none;
+            font-weight: 600;
+            border-bottom: 1px dashed;
+        }
+        @media (max-width: 600px) {
+            .score-box, .best-box { font-size: 1.2rem; padding: 4px 16px; }
+            button { padding: 6px 18px; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="game-header">
+        <div class="score-box">🐷 <span id="score">0</span></div>
+        <div class="best-box">🏆 <span id="best">0</span></div>
+    </div>
+    <div class="canvas-wrapper">
+        <canvas id="gameCanvas" width="800" height="500" style="width:100%; height:auto; max-width:800px; aspect-ratio:800/500"></canvas>
+    </div>
+    <div class="controls">
+        <button id="resetGame">Новая игра</button>
+        <button id="backToSite" onclick="window.location.href='index.html'">На главную</button>
+    </div>
+    <div class="back-link">
+        <a href="index.html">← Вернуться на сайт Pigs Team</a>
+    </div>
+</div>
+
+<script>
+    // Настройки игры
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let score = 0;
+    let bestScore = localStorage.getItem('pigGameBest') ? parseInt(localStorage.getItem('pigGameBest')) : 0;
+    let items = [];
+    let gameRunning = true;
+    let spawnInterval;
+    let animationId;
+
+    // Звуки хрюканья (три варианта)
+    const sounds = [
+        new Audio('https://zvukogram.com/zvuk/73601/'),
+        new Audio('https://zvukogram.com/zvuk/37934/'),
+        new Audio('https://zvukogram.com/zvuk/73608/')
+    ];
+    sounds.forEach(s => s.load());
+
+    // Игровые объекты
+    const ITEM_TYPES = [
+        { name: '🌽', points: 1, color: '#f9c851' },
+        { name: '🍎', points: 1, color: '#e34234' },
+        { name: '🥕', points: 1, color: '#ffa500' }
+    ];
+
+    class FoodItem {
+        constructor(x, y, type) {
+            this.x = x;
+            this.y = y;
+            this.type = type;
+            this.radius = 20;
+            this.speedY = Math.random() * 1.5 + 1.2;
+            this.speedX = (Math.random() - 0.5) * 0.8;
+        }
+        update() {
+            this.y += this.speedY;
+            this.x += this.speedX;
+            // исчезает, если упал ниже canvas
+            if (this.y > canvas.height + 50) return false;
+            // отражение от боковых стенок
+            if (this.x < this.radius) this.x = this.radius;
+            if (this.x > canvas.width - this.radius) this.x = canvas.width - this.radius;
+            return true;
+        }
+        draw() {
+            ctx.save();
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = "rgba(0,0,0,0.3)";
+            ctx.font = `${this.radius * 1.2}px "Segoe UI Emoji", "Apple Color Emoji"`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.type.emoji, this.x, this.y);
+            ctx.restore();
+        }
+    }
+
+    // инициализация размеров canvas
+    function resizeCanvas() {
+        const container = canvas.parentElement;
+        const maxWidth = Math.min(800, container.clientWidth);
+        canvas.style.width = `${maxWidth}px`;
+        canvas.width = 800;
+        canvas.height = 500;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // спавн еды
+    function spawnItem() {
+        if (!gameRunning) return;
+        const type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+        const x = 30 + Math.random() * (canvas.width - 60);
+        const y = -20;
+        items.push(new FoodItem(x, y, type));
+    }
+
+    // обновление счёта и рекорда
+    function addScore(points) {
+        score += points;
+        document.getElementById('score').innerText = score;
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('pigGameBest', bestScore);
+            document.getElementById('best').innerText = bestScore;
+        }
+    }
+
+    // проигрывание случайного хрюка
+    function playOink() {
+        const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
+        randomSound.currentTime = 0;
+        randomSound.play().catch(e => console.log("Audio play failed", e));
+    }
+
+    // обработка клика по канвасу
+    function handleCanvasClick(e) {
+        if (!gameRunning) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        let clickX, clickY;
+        if (e.touches) {
+            // тач
+            clickX = (e.touches[0].clientX - rect.left) * scaleX;
+            clickY = (e.touches[0].clientY - rect.top) * scaleY;
+        } else {
+            clickX = (e.clientX - rect.left) * scaleX;
+            clickY = (e.clientY - rect.top) * scaleY;
+        }
+        // ищем предмет, на который кликнули
+        for (let i = items.length-1; i >= 0; i--) {
+            const item = items[i];
+            const dx = clickX - item.x;
+            const dy = clickY - item.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < item.radius) {
+                items.splice(i,1);
+                addScore(item.type.points);
+                playOink();
+                break;
+            }
+        }
+    }
+
+    // анимация
+    function animate() {
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // рисуем свинью (внизу)
+        ctx.save();
+        ctx.font = '64px "Segoe UI Emoji", "Apple Color Emoji"';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = "#ff6b6b";
+        ctx.fillText("🐷", canvas.width/2, canvas.height-40);
+        ctx.restore();
+        // рисуем еду
+        for (let i=0; i<items.length; i++) {
+            const item = items[i];
+            const alive = item.update();
+            if (!alive) {
+                items.splice(i,1);
+                i--;
+            } else {
+                item.draw();
+            }
+        }
+        // обновляем счетчик на экране
+        document.getElementById('score').innerText = score;
+        document.getElementById('best').innerText = bestScore;
+        animationId = requestAnimationFrame(animate);
+    }
+
+    // запуск игры
+    function startGame() {
+        if (spawnInterval) clearInterval(spawnInterval);
+        items = [];
+        score = 0;
+        gameRunning = true;
+        document.getElementById('score').innerText = '0';
+        spawnInterval = setInterval(() => {
+            if (gameRunning) spawnItem();
+        }, 800);
+        animate();
+    }
+
+    // сброс игры (новая игра)
+    function resetGame() {
+        gameRunning = false;
+        if (spawnInterval) clearInterval(spawnInterval);
+        cancelAnimationFrame(animationId);
+        items = [];
+        score = 0;
+        document.getElementById('score').innerText = '0';
+        startGame();
+    }
+
+    // обработчики
+    canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const clickX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+        const clickY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+        // эмулируем клик
+        for (let i=items.length-1; i>=0; i--) {
+            const item = items[i];
+            const dx = clickX - item.x;
+            const dy = clickY - item.y;
+            if (Math.sqrt(dx*dx+dy*dy) < item.radius) {
+                items.splice(i,1);
+                addScore(item.type.points);
+                playOink();
+                break;
+            }
+        }
+    }, { passive: false });
+
+    document.getElementById('resetGame').addEventListener('click', resetGame);
+
+    // стартуем
+    startGame();
+</script>
+</body>
+</html>
