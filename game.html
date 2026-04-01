@@ -206,6 +206,7 @@
         <input type="text" id="playerName" placeholder="Ник (макс 15)" maxlength="15">
         <input type="password" id="playerPassword" placeholder="Пароль (мин 3)" maxlength="20">
         <button id="saveScoreBtn">Сохранить рекорд</button>
+        <button id="testApiBtn" style="background: #ffb34720; color:#ffb347;">Проверить API</button>
         <div id="saveMessage" style="color:#ffb347; margin-top:8px; font-size:0.9rem;"></div>
     </div>
     <div class="controls">
@@ -342,50 +343,35 @@
     const API_URL = "https://69cd2d94ddc3cabb7bd24353.mockapi.io/leaderboard";
 
     async function addOnlineRecord(name, score) {
-        console.log("addOnlineRecord вызвана, name:", name, "score:", score);
         try {
-            console.log("Проверяем существующую запись...");
             const checkResponse = await fetch(API_URL + `?name=${encodeURIComponent(name)}`);
-            console.log("Статус проверки:", checkResponse.status);
+            if (!checkResponse.ok) throw new Error(`HTTP ${checkResponse.status}`);
             let existing = await checkResponse.json();
-            console.log("Существующие записи:", existing);
             if (existing.length > 0) {
                 const record = existing[0];
-                console.log("Найдена запись, id:", record.id, "текущий счёт:", record.score);
                 if (score > record.score) {
-                    console.log("Обновляем запись...");
-                    await fetch(API_URL + '/' + record.id, {
+                    const updateResponse = await fetch(API_URL + '/' + record.id, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: name,
-                            score: score,
-                            date: new Date().toLocaleDateString()
-                        })
+                        body: JSON.stringify({ name, score, date: new Date().toLocaleDateString() })
                     });
-                    console.log("Запись обновлена");
+                    if (!updateResponse.ok) throw new Error(`HTTP ${updateResponse.status}`);
                     return true;
                 } else {
-                    console.log("Новый счёт не выше текущего");
                     return false;
                 }
             } else {
-                console.log("Создаём новую запись...");
-                await fetch(API_URL, {
+                const postResponse = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: name,
-                        score: score,
-                        date: new Date().toLocaleDateString()
-                    })
+                    body: JSON.stringify({ name, score, date: new Date().toLocaleDateString() })
                 });
-                console.log("Новая запись создана");
+                if (!postResponse.ok) throw new Error(`HTTP ${postResponse.status}`);
                 return true;
             }
         } catch(e) {
             console.error("Ошибка в addOnlineRecord:", e);
-            return false;
+            throw e; // пробрасываем дальше, чтобы поймать в saveScoreToLeaderboard
         }
     }
 
@@ -399,13 +385,12 @@
     let spawnInterval;
     let animationId;
     let missed = 0;
-    const MAX_MISS = 4;                     // всего 4 ошибки
+    const MAX_MISS = 4;
     let finalScore = 0;
     
-    // Динамическая сложность – множители по порогам
+    // Динамическая сложность
     let currentSpeedMultiplier = 1.0;
     const MAX_SPEED_MULT = 2.0;
-    // Пороги и множители
     const speedThresholds = [
         { score: 15, mult: 1.1 },
         { score: 25, mult: 1.2 },
@@ -413,7 +398,6 @@
         { score: 75, mult: 1.4 },
         { score: 90, mult: 1.5 },
         { score: 115, mult: 1.6 }
-        // дальнейшие: при 140 -> 1.7, 170 -> 1.8, 200 -> 1.9, 230 -> 2.0
     ];
 
     function getSpeedMultiplier(currentScore) {
@@ -425,7 +409,6 @@
                 break;
             }
         }
-        // после последнего порога добавляем плавный рост до 2.0
         if (currentScore >= 140) mult = Math.min(2.0, 1.6 + Math.floor((currentScore - 115) / 30) * 0.1);
         return Math.min(mult, MAX_SPEED_MULT);
     }
@@ -574,7 +557,6 @@
         if (spawnInterval) clearInterval(spawnInterval);
         document.getElementById('gameOverMsg').style.display = 'block';
         finalScore = score;
-        console.log("Game over, finalScore =", finalScore);
         if (finalScore > 0) {
             document.getElementById('saveScorePanel').style.display = 'block';
             document.getElementById('playerName').value = '';
@@ -664,7 +646,24 @@
         startGame();
     }
 
-    // Обновлённая функция сохранения рекорда с онлайн-отправкой
+    // Проверка API (просто запрос на чтение)
+    async function testApi() {
+        const msgDiv = document.getElementById('saveMessage');
+        msgDiv.innerHTML = 'Проверка API...';
+        try {
+            const response = await fetch(API_URL);
+            if (response.ok) {
+                const data = await response.json();
+                msgDiv.innerHTML = `✅ API доступен. Текущих рекордов: ${data.length}`;
+            } else {
+                msgDiv.innerHTML = `❌ Ошибка HTTP: ${response.status}`;
+            }
+        } catch(e) {
+            msgDiv.innerHTML = `❌ Ошибка подключения: ${e.message}`;
+        }
+    }
+
+    // Сохранение рекорда с подробной ошибкой
     async function saveScoreToLeaderboard() {
         const nameInput = document.getElementById('playerName');
         const passInput = document.getElementById('playerPassword');
@@ -686,7 +685,7 @@
             return;
         }
         
-        // Локальная проверка пароля (как раньше)
+        // Локальная проверка пароля
         let userPasswords = {};
         try {
             userPasswords = JSON.parse(localStorage.getItem('pigPasswords')) || {};
@@ -701,35 +700,35 @@
             return;
         }
         
-        console.log("Сохраняем рекорд, finalScore =", finalScore);
-        // Отправка онлайн-рекорда
-        const onlineSuccess = await addOnlineRecord(playerName, finalScore);
-        if (onlineSuccess) {
-            msgDiv.innerHTML = `✅ Рекорд ${finalScore} сохранён в общую таблицу!`;
-        } else {
-            // Если онлайн не удалось, сохраняем локально (как запасной вариант)
+        msgDiv.innerHTML = 'Отправка рекорда...';
+        try {
+            const success = await addOnlineRecord(playerName, finalScore);
+            if (success) {
+                msgDiv.innerHTML = `✅ Рекорд ${finalScore} сохранён в общую таблицу!`;
+            } else {
+                msgDiv.innerHTML = `⚠️ Рекорд не обновлён (у вас уже есть выше или тот же).`;
+            }
+        } catch(e) {
+            msgDiv.innerHTML = `❌ Ошибка онлайн-сохранения: ${e.message}. Рекорд сохранён локально.`;
+            // Сохраняем локально на случай ошибки
             let leaderboard = [];
             try {
                 leaderboard = JSON.parse(localStorage.getItem('pigLeaderboard')) || [];
             } catch(e) { leaderboard = []; }
-            
             const existingEntry = leaderboard.find(entry => entry.name === playerName);
-            if (existingEntry && finalScore <= existingEntry.score) {
-                msgDiv.innerHTML = `⚠️ Ваш лучший результат ${existingEntry.score}. Новый не выше. (сохранён локально)`;
-                return;
+            if (!existingEntry || finalScore > existingEntry.score) {
+                leaderboard = leaderboard.filter(entry => entry.name !== playerName);
+                leaderboard.push({ name: playerName, score: finalScore, date: new Date().toLocaleDateString() });
+                leaderboard.sort((a,b) => b.score - a.score);
+                leaderboard = leaderboard.slice(0,10);
+                localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
+                msgDiv.innerHTML += ' Сохранено локально.';
             }
-            leaderboard = leaderboard.filter(entry => entry.name !== playerName);
-            const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
-            leaderboard.push(newEntry);
-            leaderboard.sort((a,b) => b.score - a.score);
-            leaderboard = leaderboard.slice(0,10);
-            localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
-            msgDiv.innerHTML = `🎉 Рекорд ${finalScore} сохранён локально (офлайн-режим).`;
         }
         
         setTimeout(() => {
             document.getElementById('saveScorePanel').style.display = 'none';
-        }, 2000);
+        }, 3000);
     }
 
     function openLeaderboard() {
@@ -758,6 +757,7 @@
     document.getElementById('resetGame').addEventListener('click', resetGame);
     document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
     document.getElementById('saveScoreBtn').addEventListener('click', saveScoreToLeaderboard);
+    document.getElementById('testApiBtn').addEventListener('click', testApi);
 
     document.getElementById('best').innerText = bestScore;
     startGame();
