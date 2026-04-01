@@ -118,7 +118,7 @@
             color: white;
             font-size: 1rem;
             outline: none;
-            margin-right: 10px;
+            margin: 5px;
             width: 180px;
         }
         .save-score-panel input::placeholder {
@@ -132,6 +132,7 @@
             border-radius: 40px;
             font-weight: bold;
             cursor: pointer;
+            margin: 5px;
         }
         .controls {
             display: flex;
@@ -189,8 +190,11 @@
         <div id="gameOverMsg" class="game-over-message" style="display: none;">GAME OVER</div>
     </div>
     <div id="saveScorePanel" class="save-score-panel">
-        <input type="text" id="playerName" placeholder="Твой ник (макс 15 символов)" maxlength="15">
-        <button id="saveScoreBtn">Сохранить рекорд в таблицу</button>
+        <input type="text" id="playerName" placeholder="Твой ник" maxlength="15">
+        <input type="password" id="playerPassword" placeholder="Пароль" maxlength="20">
+        <input type="password" id="playerPasswordConfirm" placeholder="Повтори пароль">
+        <button id="saveScoreBtn">Сохранить рекорд</button>
+        <div id="saveMessage" style="color:#ffb347; margin-top:8px;"></div>
     </div>
     <div class="controls">
         <button id="resetGame">Новая игра</button>
@@ -333,9 +337,9 @@
     let animationId;
     let missed = 0;
     const MAX_MISS = 5;
-    let finalScore = 0; // для сохранения после game over
+    let finalScore = 0;
 
-    // Звуки хрюканья (три варианта)
+    // Звуки
     const sounds = [
         new Audio('https://zvukogram.com/zvuk/73601/'),
         new Audio('https://zvukogram.com/zvuk/37934/'),
@@ -356,7 +360,6 @@
             this.y = y;
             this.type = type;
             this.radius = 28;
-            // постоянная скорость (без динамического множителя)
             let baseSpeed = 150 + Math.random() * 80;
             this.speedY = baseSpeed * (type.rare ? 1.4 : 1.0);
             let sideSpeed = (Math.random() - 0.5) * 80;
@@ -471,9 +474,12 @@
         if (spawnInterval) clearInterval(spawnInterval);
         document.getElementById('gameOverMsg').style.display = 'block';
         finalScore = score;
-        // показываем панель сохранения рекорда, если есть очки
         if (finalScore > 0) {
             document.getElementById('saveScorePanel').style.display = 'block';
+            document.getElementById('playerName').value = '';
+            document.getElementById('playerPassword').value = '';
+            document.getElementById('playerPasswordConfirm').value = '';
+            document.getElementById('saveMessage').innerHTML = '';
         }
     }
 
@@ -554,21 +560,85 @@
         startGame();
     }
 
+    // Сохранение рекорда с паролем
     function saveScoreToLeaderboard() {
         const nameInput = document.getElementById('playerName');
+        const passInput = document.getElementById('playerPassword');
+        const confirmInput = document.getElementById('playerPasswordConfirm');
+        const msgDiv = document.getElementById('saveMessage');
         let playerName = nameInput.value.trim();
-        if (!playerName) playerName = "Аноним";
+        if (!playerName) {
+            msgDiv.innerHTML = 'Введите ник!';
+            return;
+        }
         if (playerName.length > 15) playerName = playerName.substring(0,15);
         
-        let leaderboard = JSON.parse(localStorage.getItem('pigLeaderboard')) || [];
-        leaderboard.push({ name: playerName, score: finalScore, date: new Date().toLocaleDateString() });
-        leaderboard.sort((a,b) => b.score - a.score);
-        leaderboard = leaderboard.slice(0, 10);
-        localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
+        let leaderboard = [];
+        try {
+            leaderboard = JSON.parse(localStorage.getItem('pigLeaderboard')) || [];
+        } catch(e) { leaderboard = []; }
         
-        alert(`Рекорд ${finalScore} очков сохранён!`);
-        nameInput.value = '';
-        document.getElementById('saveScorePanel').style.display = 'none';
+        let userPasswords = {};
+        try {
+            userPasswords = JSON.parse(localStorage.getItem('pigPasswords')) || {};
+        } catch(e) { userPasswords = {}; }
+        
+        const password = passInput.value;
+        if (!password) {
+            msgDiv.innerHTML = 'Введите пароль!';
+            return;
+        }
+        
+        const existingIndex = leaderboard.findIndex(entry => entry.name === playerName);
+        const existingPassword = userPasswords[playerName];
+        
+        if (existingPassword === undefined) {
+            // Новый пользователь
+            const confirm = confirmInput.value;
+            if (!confirm || confirm !== password) {
+                msgDiv.innerHTML = 'Пароли не совпадают!';
+                return;
+            }
+            if (password.length < 3) {
+                msgDiv.innerHTML = 'Пароль минимум 3 символа';
+                return;
+            }
+            userPasswords[playerName] = password;
+            localStorage.setItem('pigPasswords', JSON.stringify(userPasswords));
+            // Добавляем запись
+            const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
+            leaderboard.push(newEntry);
+            leaderboard.sort((a,b) => b.score - a.score);
+            leaderboard = leaderboard.slice(0,10);
+            localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
+            msgDiv.innerHTML = `Рекорд ${finalScore} сохранён!`;
+            setTimeout(() => {
+                document.getElementById('saveScorePanel').style.display = 'none';
+            }, 2000);
+        } else {
+            // Существующий пользователь
+            if (existingPassword !== password) {
+                msgDiv.innerHTML = 'Неверный пароль!';
+                return;
+            }
+            // Проверяем, нужно ли обновлять
+            const existingEntry = leaderboard.find(entry => entry.name === playerName);
+            if (existingEntry && finalScore <= existingEntry.score) {
+                msgDiv.innerHTML = `Ваш рекорд (${existingEntry.score}) выше или равен. Не сохранено.`;
+                return;
+            }
+            // Удаляем старую запись и добавляем новую
+            leaderboard = leaderboard.filter(entry => entry.name !== playerName);
+            const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
+            leaderboard.push(newEntry);
+            leaderboard.sort((a,b) => b.score - a.score);
+            leaderboard = leaderboard.slice(0,10);
+            localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
+            msgDiv.innerHTML = `Новый рекорд ${finalScore} сохранён!`;
+            setTimeout(() => {
+                document.getElementById('saveScorePanel').style.display = 'none';
+            }, 2000);
+        }
     }
 
     function openLeaderboard() {
