@@ -590,6 +590,7 @@
             <li><a href="#roster">Состав</a></li>
             <li><a href="#achievements">Достижения</a></li>
             <li><a href="#news">Новости</a></li>
+            <li><a href="game.html" target="_blank">Игра</a></li>
             <li><a href="#contact">Контакты</a></li>
         </ul>
     </div>
@@ -739,7 +740,7 @@ PiGs Team — доминирование на арене, хрю-тактики 
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Частицы (светящиеся точки)
+    // Частицы
     const PARTICLE_COUNT = 45;
     class Particle {
         constructor() {
@@ -757,7 +758,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
             if (this.x > width) this.x = 0;
             if (this.y < 0) this.y = height;
             if (this.y > height) this.y = 0;
-            // реакция на мышь
             const dx = mouseX - this.x;
             const dy = mouseY - this.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
@@ -776,13 +776,13 @@ PiGs Team — доминирование на арене, хрю-тактики 
         }
     }
 
-    // Свиньи (мало, 6 штук)
+    // Свиньи
     const PIG_COUNT = 6;
     class FlyingPig {
         constructor() {
             this.x = Math.random() * width;
             this.y = Math.random() * height;
-            this.size = Math.random() * 28 + 20;   // размер шрифта 20-48px
+            this.size = Math.random() * 28 + 20;
             this.speedX = (Math.random() - 0.5) * 0.3;
             this.speedY = (Math.random() - 0.5) * 0.3;
             this.opacity = Math.random() * 0.4 + 0.2;
@@ -793,7 +793,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
             this.x += this.speedX;
             this.y += this.speedY;
             this.rotation += this.rotationSpeed;
-            // отталкивание от курсора
             const dx = mouseX - this.x;
             const dy = mouseY - this.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
@@ -803,7 +802,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
                 this.x -= Math.cos(angle) * force;
                 this.y -= Math.sin(angle) * force;
             }
-            // границы
             if (this.x < -60) this.x = width + 60;
             if (this.x > width + 60) this.x = -60;
             if (this.y < -60) this.y = height + 60;
@@ -842,7 +840,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
     }
     animate();
 
-    // Отслеживание мыши/касаний
     document.addEventListener('mousemove', (e) => {
         mouseX = e.clientX;
         mouseY = e.clientY;
@@ -857,7 +854,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
         mouseY = -1000;
     });
 
-    // Задержка для карточек
     const cards = document.querySelectorAll('.player-card, .achieve-item, .news-card');
     cards.forEach((card, idx) => {
         card.style.transitionDelay = `${idx * 0.03}s`;
