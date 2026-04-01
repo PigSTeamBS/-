@@ -42,6 +42,7 @@
             border: 1px solid rgba(255,107,107,0.5);
             max-width: 1000px;
             width: 100%;
+            transition: all 0.2s ease;
         }
         .game-header {
             display: flex;
@@ -214,14 +215,19 @@
     let particles = [];
     let flyingPigs = [];
     let mouseX = 0, mouseY = 0;
+    let bgAnimationFrame;
 
     function resizeBgCanvas() {
         bgWidth = window.innerWidth;
         bgHeight = window.innerHeight;
         bgCanvas.width = bgWidth;
         bgCanvas.height = bgHeight;
+        // пересоздаём частицы и свиней при изменении размера
+        initBackground();
     }
-    window.addEventListener('resize', resizeBgCanvas);
+    window.addEventListener('resize', () => {
+        resizeBgCanvas();
+    });
     resizeBgCanvas();
 
     const PARTICLE_COUNT = 45;
@@ -318,7 +324,7 @@
         bgCtx.clearRect(0, 0, bgWidth, bgHeight);
         particles.forEach(p => { p.update(); p.draw(); });
         flyingPigs.forEach(p => { p.update(); p.draw(); });
-        requestAnimationFrame(animateBackground);
+        bgAnimationFrame = requestAnimationFrame(animateBackground);
     }
     animateBackground();
 
@@ -338,6 +344,7 @@
     let missed = 0;
     const MAX_MISS = 5;
     let finalScore = 0;
+    let lastTimestamp = 0;
 
     // Звуки
     const sounds = [
@@ -360,10 +367,11 @@
             this.y = y;
             this.type = type;
             this.radius = 28;
-            let baseSpeed = 150 + Math.random() * 80;
-            this.speedY = baseSpeed * (type.rare ? 1.4 : 1.0);
-            let sideSpeed = (Math.random() - 0.5) * 80;
-            if (type.rare) sideSpeed *= 1.5;
+            // уменьшаем базовую скорость для комфортной игры
+            let baseSpeed = 120 + Math.random() * 60; // раньше было 150+80
+            this.speedY = baseSpeed * (type.rare ? 1.3 : 1.0);
+            let sideSpeed = (Math.random() - 0.5) * 60;
+            if (type.rare) sideSpeed *= 1.3;
             this.speedX = sideSpeed;
         }
         update(deltaTime) {
@@ -434,7 +442,7 @@
     function spawnItem() {
         if (!gameRunning) return;
         let type;
-        if (Math.random() < 0.12 && score > 10) {
+        if (Math.random() < 0.1 && score > 10) { // реже золотой
             type = ITEM_TYPES[3];
         } else {
             type = ITEM_TYPES[Math.floor(Math.random() * 3)];
@@ -483,7 +491,6 @@
         }
     }
 
-    let lastTimestamp = 0;
     function animate(timestamp) {
         if (!ctx) return;
         let deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000);
@@ -492,6 +499,7 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // Обновляем и рисуем предметы
         for (let i=0; i<items.length; i++) {
             const item = items[i];
             const alive = item.update(deltaTime);
@@ -508,6 +516,7 @@
             updatePigPosition(deltaTime);
         }
 
+        // Рисуем свинью
         ctx.save();
         ctx.font = '72px "Segoe UI Emoji", "Apple Color Emoji"';
         ctx.textAlign = 'center';
@@ -536,9 +545,10 @@
         document.getElementById('miss').innerText = '0';
         document.getElementById('gameOverMsg').style.display = 'none';
         document.getElementById('saveScorePanel').style.display = 'none';
+        // Увеличиваем интервал спавна, чтобы фруктов было меньше
         spawnInterval = setInterval(() => {
             if (gameRunning) spawnItem();
-        }, 700);
+        }, 850);
         if (animationId) cancelAnimationFrame(animationId);
         lastTimestamp = 0;
         animationId = requestAnimationFrame(animate);
@@ -605,7 +615,6 @@
             }
             userPasswords[playerName] = password;
             localStorage.setItem('pigPasswords', JSON.stringify(userPasswords));
-            // Добавляем запись
             const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
             leaderboard.push(newEntry);
             leaderboard.sort((a,b) => b.score - a.score);
@@ -621,13 +630,11 @@
                 msgDiv.innerHTML = 'Неверный пароль!';
                 return;
             }
-            // Проверяем, нужно ли обновлять
             const existingEntry = leaderboard.find(entry => entry.name === playerName);
             if (existingEntry && finalScore <= existingEntry.score) {
                 msgDiv.innerHTML = `Ваш рекорд (${existingEntry.score}) выше или равен. Не сохранено.`;
                 return;
             }
-            // Удаляем старую запись и добавляем новую
             leaderboard = leaderboard.filter(entry => entry.name !== playerName);
             const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
             leaderboard.push(newEntry);
@@ -654,7 +661,10 @@
         pigX = canvas.width / 2;
         targetPigX = canvas.width / 2;
     }
-    window.addEventListener('resize', resizeGameCanvas);
+    window.addEventListener('resize', () => {
+        resizeGameCanvas();
+        // Не перезапускаем игру, просто корректируем позицию
+    });
     resizeGameCanvas();
 
     canvas.addEventListener('mousemove', handleMove);
