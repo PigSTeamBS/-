@@ -6,6 +6,7 @@
     <title>Игра «Собери корм» | Pigs Team</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
     <style>
+        /* (весь CSS остаётся без изменений, он уже есть в твоём файле) */
         * {
             margin: 0;
             padding: 0;
@@ -337,6 +338,50 @@
     document.addEventListener('touchmove', (e) => { const touch = e.touches[0]; mouseX = touch.clientX; mouseY = touch.clientY; });
     document.addEventListener('touchend', () => { mouseX = -1000; mouseY = -1000; });
 
+    // ==================== MockAPI (онлайн-рекорды) ====================
+    const API_URL = "https://69cd2d94ddc3cabb7bd24353.mockapi.io/leaderboard";
+
+    async function addOnlineRecord(name, score) {
+        try {
+            // Проверяем, есть ли уже запись с таким ником
+            const checkResponse = await fetch(API_URL + `?name=${encodeURIComponent(name)}`);
+            let existing = await checkResponse.json();
+            if (existing.length > 0) {
+                const record = existing[0];
+                if (score > record.score) {
+                    // Обновляем существующую запись
+                    await fetch(API_URL + '/' + record.id, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: name,
+                            score: score,
+                            date: new Date().toLocaleDateString()
+                        })
+                    });
+                    return true; // обновлено
+                } else {
+                    return false; // новый счёт не выше
+                }
+            } else {
+                // Создаём новую запись
+                await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        score: score,
+                        date: new Date().toLocaleDateString()
+                    })
+                });
+                return true; // создано
+            }
+        } catch(e) {
+            console.error("Ошибка при сохранении онлайн-рекорда:", e);
+            return false;
+        }
+    }
+
     // ==================== ОСНОВНАЯ ИГРА ====================
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -347,13 +392,13 @@
     let spawnInterval;
     let animationId;
     let missed = 0;
-    const MAX_MISS = 6;            // увеличено до 6 для большего шанса
+    const MAX_MISS = 6;
     let finalScore = 0;
     
     // Динамическая сложность
     let currentSpeedMultiplier = 1.0;
     const MAX_SPEED_MULT = 1.5;
-    const SPEED_STEP = 0.05;        // каждые 20 очков +0.05
+    const SPEED_STEP = 0.05;
 
     // Звуки
     const sounds = [
@@ -399,11 +444,6 @@
             ctx.textBaseline = 'middle';
             ctx.fillText(this.type.emoji, this.x, this.y);
             ctx.restore();
-        }
-        // Для плавного ускорения
-        setSpeedMultiplier(mult) {
-            let baseSpeed = 100 + Math.random() * 50; // сохраняем базовую? но проще пересчитать
-            // не будем менять мгновенно, лучше обновлять через update
         }
     }
 
@@ -458,12 +498,6 @@
         if (newMult !== currentSpeedMultiplier) {
             currentSpeedMultiplier = newMult;
             document.getElementById('speedMultiplier').innerText = currentSpeedMultiplier.toFixed(2);
-            // Плавно ускоряем уже падающие фрукты (не обязательно, но для честности)
-            for (let item of items) {
-                // пересчитываем скорость на основе текущего множителя и исходной базовой
-                // проще: item.speedY = item.speedY / oldMult * newMult;
-                // но для простоты оставим, так как новые будут с новым множителем
-            }
         }
     }
 
@@ -600,8 +634,8 @@
         startGame();
     }
 
-    // Сохранение рекорда (стилизованное сообщение)
-    function saveScoreToLeaderboard() {
+    // Обновлённая функция сохранения рекорда с онлайн-отправкой
+    async function saveScoreToLeaderboard() {
         const nameInput = document.getElementById('playerName');
         const passInput = document.getElementById('playerPassword');
         const msgDiv = document.getElementById('saveMessage');
@@ -622,38 +656,35 @@
             return;
         }
         
-        let leaderboard = [];
-        try {
-            leaderboard = JSON.parse(localStorage.getItem('pigLeaderboard')) || [];
-        } catch(e) { leaderboard = []; }
-        
+        // Локальная проверка пароля (как раньше)
         let userPasswords = {};
         try {
             userPasswords = JSON.parse(localStorage.getItem('pigPasswords')) || {};
         } catch(e) { userPasswords = {}; }
         
         const existingPassword = userPasswords[playerName];
-        
         if (existingPassword === undefined) {
             userPasswords[playerName] = password;
             localStorage.setItem('pigPasswords', JSON.stringify(userPasswords));
-            const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
-            leaderboard.push(newEntry);
-            leaderboard.sort((a,b) => b.score - a.score);
-            leaderboard = leaderboard.slice(0,10);
-            localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
-            msgDiv.innerHTML = `✅ Рекорд ${finalScore} сохранён!`;
-            setTimeout(() => {
-                document.getElementById('saveScorePanel').style.display = 'none';
-            }, 2000);
+        } else if (existingPassword !== password) {
+            msgDiv.innerHTML = '❌ Неверный пароль!';
+            return;
+        }
+        
+        // Отправка онлайн-рекорда
+        const onlineSuccess = await addOnlineRecord(playerName, finalScore);
+        if (onlineSuccess) {
+            msgDiv.innerHTML = `✅ Рекорд ${finalScore} сохранён в общую таблицу!`;
         } else {
-            if (existingPassword !== password) {
-                msgDiv.innerHTML = '❌ Неверный пароль!';
-                return;
-            }
+            // Если онлайн не удалось, сохраняем локально (как запасной вариант)
+            let leaderboard = [];
+            try {
+                leaderboard = JSON.parse(localStorage.getItem('pigLeaderboard')) || [];
+            } catch(e) { leaderboard = []; }
+            
             const existingEntry = leaderboard.find(entry => entry.name === playerName);
             if (existingEntry && finalScore <= existingEntry.score) {
-                msgDiv.innerHTML = `⚠️ Ваш лучший результат ${existingEntry.score}. Новый не выше.`;
+                msgDiv.innerHTML = `⚠️ Ваш лучший результат ${existingEntry.score}. Новый не выше. (сохранён локально)`;
                 return;
             }
             leaderboard = leaderboard.filter(entry => entry.name !== playerName);
@@ -662,11 +693,12 @@
             leaderboard.sort((a,b) => b.score - a.score);
             leaderboard = leaderboard.slice(0,10);
             localStorage.setItem('pigLeaderboard', JSON.stringify(leaderboard));
-            msgDiv.innerHTML = `🎉 Новый рекорд ${finalScore} сохранён!`;
-            setTimeout(() => {
-                document.getElementById('saveScorePanel').style.display = 'none';
-            }, 2000);
+            msgDiv.innerHTML = `🎉 Рекорд ${finalScore} сохранён локально (офлайн-режим).`;
         }
+        
+        setTimeout(() => {
+            document.getElementById('saveScorePanel').style.display = 'none';
+        }, 2000);
     }
 
     function openLeaderboard() {
