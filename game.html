@@ -342,14 +342,18 @@
     const API_URL = "https://69cd2d94ddc3cabb7bd24353.mockapi.io/leaderboard";
 
     async function addOnlineRecord(name, score) {
+        console.log("addOnlineRecord вызвана, name:", name, "score:", score);
         try {
-            // Проверяем, есть ли уже запись с таким ником
+            console.log("Проверяем существующую запись...");
             const checkResponse = await fetch(API_URL + `?name=${encodeURIComponent(name)}`);
+            console.log("Статус проверки:", checkResponse.status);
             let existing = await checkResponse.json();
+            console.log("Существующие записи:", existing);
             if (existing.length > 0) {
                 const record = existing[0];
+                console.log("Найдена запись, id:", record.id, "текущий счёт:", record.score);
                 if (score > record.score) {
-                    // Обновляем существующую запись
+                    console.log("Обновляем запись...");
                     await fetch(API_URL + '/' + record.id, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -359,12 +363,14 @@
                             date: new Date().toLocaleDateString()
                         })
                     });
-                    return true; // обновлено
+                    console.log("Запись обновлена");
+                    return true;
                 } else {
-                    return false; // новый счёт не выше
+                    console.log("Новый счёт не выше текущего");
+                    return false;
                 }
             } else {
-                // Создаём новую запись
+                console.log("Создаём новую запись...");
                 await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -374,10 +380,11 @@
                         date: new Date().toLocaleDateString()
                     })
                 });
-                return true; // создано
+                console.log("Новая запись создана");
+                return true;
             }
         } catch(e) {
-            console.error("Ошибка при сохранении онлайн-рекорда:", e);
+            console.error("Ошибка в addOnlineRecord:", e);
             return false;
         }
     }
@@ -567,6 +574,7 @@
         if (spawnInterval) clearInterval(spawnInterval);
         document.getElementById('gameOverMsg').style.display = 'block';
         finalScore = score;
+        console.log("Game over, finalScore =", finalScore);
         if (finalScore > 0) {
             document.getElementById('saveScorePanel').style.display = 'block';
             document.getElementById('playerName').value = '';
@@ -693,6 +701,7 @@
             return;
         }
         
+        console.log("Сохраняем рекорд, finalScore =", finalScore);
         // Отправка онлайн-рекорда
         const onlineSuccess = await addOnlineRecord(playerName, finalScore);
         if (onlineSuccess) {
