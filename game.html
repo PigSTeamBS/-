@@ -328,22 +328,27 @@
     ];
     sounds.forEach(s => s.load());
 
+    // Типы фруктов (обычные и золотой бонус)
     const ITEM_TYPES = [
-        { emoji: '🌽', points: 1 },
-        { emoji: '🍎', points: 1 },
-        { emoji: '🥕', points: 1 }
+        { emoji: '🌽', points: 1, rare: false },
+        { emoji: '🍎', points: 1, rare: false },
+        { emoji: '🥕', points: 1, rare: false },
+        { emoji: '🌽✨', points: 3, rare: true }   // золотая кукуруза — редкость
     ];
 
     class FoodItem {
-        constructor(x, y, type, speedMultiplier) {
+        constructor(x, y, type, speedMultiplier, chaosFactor) {
             this.x = x;
             this.y = y;
             this.type = type;
-            this.radius = 28;      // увеличен радиус
-            // базовая скорость + случайный разброс, умноженная на общий множитель
-            let baseSpeed = 1.5 + Math.random() * 1.0;
+            this.radius = 28;
+            // базовая скорость + хаос (боковое смещение)
+            let baseSpeed = 1.6 + Math.random() * 1.2;
             this.speedY = baseSpeed * speedMultiplier;
-            this.speedX = (Math.random() - 0.5) * 0.8;
+            // боковая скорость: у золотого бонуса выше
+            let sideSpeed = (Math.random() - 0.5) * (0.8 + chaosFactor * 0.8);
+            if (type.rare) sideSpeed *= 1.5;
+            this.speedX = sideSpeed;
         }
         update() {
             this.y += this.speedY;
@@ -367,29 +372,31 @@
 
     let pigX = canvas.width / 2;
     const pigY = canvas.height - 60;
-    const pigRadius = 42;   // увеличен радиус свиньи
+    const pigRadius = 36;   // уменьшен для честности
 
     // Динамическая сложность
     let currentSpeedMultiplier = 1.0;
-    let lastScoreThreshold = 0;
-    const SPEED_INCREASE_STEP = 0.3;   // +0.3 каждые 15 очков
-    const SPAWN_BASE_INTERVAL = 800;    // мс
-    const MIN_SPAWN_INTERVAL = 400;
+    let chaosFactor = 0;    // дополнительный хаос (боковое смещение)
+    const SPEED_INCREASE_STEP = 0.28;   // каждые 12 очков +0.28
+    const SPAWN_BASE_INTERVAL = 800;
+    const MIN_SPAWN_INTERVAL = 300;     // чаще на максимуме
 
     function updateDifficulty() {
-        let newMultiplier = 1 + Math.floor(score / 15) * SPEED_INCREASE_STEP;
-        newMultiplier = Math.min(newMultiplier, 2.5); // макс 2.5x
+        // новый множитель: каждые 12 очков
+        let newMultiplier = 1 + Math.floor(score / 12) * SPEED_INCREASE_STEP;
+        newMultiplier = Math.min(newMultiplier, 3.2);  // макс 3.2x
         if (newMultiplier > currentSpeedMultiplier && score > 0) {
-            // показываем всплывашку
             const popup = document.getElementById('speedPopup');
             popup.style.opacity = '1';
             setTimeout(() => { popup.style.opacity = '0'; }, 1000);
         }
         currentSpeedMultiplier = newMultiplier;
+        // хаос растёт с множителем
+        chaosFactor = Math.min(1.2, (currentSpeedMultiplier - 1) * 0.6);
         document.getElementById('speedMultiplier').innerText = currentSpeedMultiplier.toFixed(1);
         
-        // пересчёт интервала спавна
-        let interval = SPAWN_BASE_INTERVAL / (1 + Math.floor(score / 20) * 0.25);
+        // интервал спавна
+        let interval = SPAWN_BASE_INTERVAL / (1 + Math.floor(score / 15) * 0.35);
         interval = Math.max(interval, MIN_SPAWN_INTERVAL);
         if (spawnInterval) {
             clearInterval(spawnInterval);
@@ -435,10 +442,23 @@
 
     function spawnItem() {
         if (!gameRunning) return;
-        const type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
-        const x = 30 + Math.random() * (canvas.width - 60);
+        // выбираем тип: редкость ~12% для золотого
+        let type;
+        if (Math.random() < 0.12 && score > 10) {
+            type = ITEM_TYPES[3]; // золотая кукуруза
+        } else {
+            type = ITEM_TYPES[Math.floor(Math.random() * 3)];
+        }
+        // спавн с учётом хаоса: на высокой скорости фрукты могут появляться ближе к краям
+        let x;
+        if (currentSpeedMultiplier > 2.0 && Math.random() > 0.5) {
+            // крайние зоны
+            x = (Math.random() < 0.5) ? 40 + Math.random() * 80 : canvas.width - 80 - Math.random() * 80;
+        } else {
+            x = 40 + Math.random() * (canvas.width - 80);
+        }
         const y = -20;
-        items.push(new FoodItem(x, y, type, currentSpeedMultiplier));
+        items.push(new FoodItem(x, y, type, currentSpeedMultiplier, chaosFactor));
     }
 
     function addScore(points) {
@@ -477,15 +497,12 @@
         if (!ctx) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Обновляем и рисуем предметы с учётом текущей сложности
+        // обновляем и рисуем предметы
         for (let i=0; i<items.length; i++) {
             const item = items[i];
-            // обновляем скорость предмета в соответствии с текущим множителем (для плавности)
-            // но проще пересоздавать? Нет, будем динамически менять скорость каждого предмета
-            // для плавного ускорения уже падающих фруктов
-            let targetSpeedY = (1.5 + Math.random()*1.0) * currentSpeedMultiplier;
-            // плавно приближаем скорость к целевой
-            item.speedY = item.speedY * 0.98 + targetSpeedY * 0.02;
+            // плавно подстраиваем скорость под текущий множитель (чтобы ускорение чувствовалось)
+            let targetSpeedY = (1.6 + Math.random()*1.2) * currentSpeedMultiplier;
+            item.speedY = item.speedY * 0.97 + targetSpeedY * 0.03;
             const alive = item.update();
             if (!alive) {
                 items.splice(i,1);
@@ -496,14 +513,17 @@
             }
         }
 
-        // Рисуем свинью
+        // рисуем свинью с эффектом свечения при высокой сложности
         ctx.save();
-        // добавляем свечение при высокой скорости
-        if (currentSpeedMultiplier > 1.5) {
+        if (currentSpeedMultiplier > 2.2) {
             ctx.shadowBlur = 20;
+            ctx.shadowColor = "#ff4444";
+            ctx.fillStyle = "#ffaa77";
+        } else if (currentSpeedMultiplier > 1.5) {
+            ctx.shadowBlur = 15;
             ctx.shadowColor = "#ff6b6b";
         } else {
-            ctx.shadowBlur = 12;
+            ctx.shadowBlur = 10;
             ctx.shadowColor = "#ff6b6b";
         }
         ctx.font = '72px "Segoe UI Emoji", "Apple Color Emoji"';
@@ -527,11 +547,11 @@
         gameRunning = true;
         pigX = canvas.width / 2;
         currentSpeedMultiplier = 1.0;
+        chaosFactor = 0;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
         document.getElementById('speedMultiplier').innerText = '1.0';
         document.getElementById('gameOverMsg').style.display = 'none';
-        // начальный интервал
         let interval = SPAWN_BASE_INTERVAL;
         spawnInterval = setInterval(() => {
             if (gameRunning) spawnItem();
@@ -548,6 +568,7 @@
         score = 0;
         missed = 0;
         currentSpeedMultiplier = 1.0;
+        chaosFactor = 0;
         pigX = canvas.width / 2;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
