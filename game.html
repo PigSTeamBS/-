@@ -20,8 +20,21 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
+            position: relative;
+        }
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            display: block;
         }
         .game-container {
+            position: relative;
+            z-index: 2;
             background: rgba(0,0,0,0.6);
             backdrop-filter: blur(8px);
             border-radius: 48px;
@@ -39,7 +52,7 @@
             margin-bottom: 20px;
             padding: 0 16px;
         }
-        .score-box, .best-box {
+        .score-box, .best-box, .miss-box {
             background: rgba(0,0,0,0.6);
             border-radius: 40px;
             padding: 8px 20px;
@@ -48,13 +61,17 @@
             color: #ffb347;
             border: 1px solid #ff6b6b;
         }
-        .score-box span, .best-box span {
+        .score-box span, .best-box span, .miss-box span {
             color: white;
             font-size: 1rem;
+        }
+        .miss-box {
+            color: #ff8888;
         }
         .canvas-wrapper {
             display: flex;
             justify-content: center;
+            position: relative;
         }
         canvas {
             background: rgba(20,20,30,0.5);
@@ -64,6 +81,26 @@
             width: 100%;
             height: auto;
             border: 1px solid #ff6b6b;
+            display: block;
+        }
+        .game-over-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(12px);
+            padding: 16px 32px;
+            border-radius: 60px;
+            font-size: 2rem;
+            font-weight: bold;
+            color: #ff6b6b;
+            border: 2px solid #ff6b6b;
+            white-space: nowrap;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(255,107,107,0.5);
         }
         .controls {
             display: flex;
@@ -98,19 +135,25 @@
             border-bottom: 1px dashed;
         }
         @media (max-width: 600px) {
-            .score-box, .best-box { font-size: 1.2rem; padding: 4px 16px; }
+            .score-box, .best-box, .miss-box { font-size: 1.2rem; padding: 4px 16px; }
             button { padding: 6px 18px; }
+            .game-over-message { font-size: 1.4rem; padding: 12px 24px; white-space: nowrap; }
         }
     </style>
 </head>
 <body>
+
+<canvas id="bg-canvas"></canvas>
+
 <div class="game-container">
     <div class="game-header">
         <div class="score-box">🐷 <span id="score">0</span></div>
         <div class="best-box">🏆 <span id="best">0</span></div>
+        <div class="miss-box">❌ <span id="miss">0</span> / 5</div>
     </div>
     <div class="canvas-wrapper">
         <canvas id="gameCanvas" width="800" height="500" style="width:100%; height:auto; max-width:800px; aspect-ratio:800/500"></canvas>
+        <div id="gameOverMsg" class="game-over-message" style="display: none;">GAME OVER</div>
     </div>
     <div class="controls">
         <button id="resetGame">Новая игра</button>
@@ -122,7 +165,126 @@
 </div>
 
 <script>
-    // Настройки игры
+    // ==================== ФОН (частицы + свиньи) ====================
+    const bgCanvas = document.getElementById('bg-canvas');
+    const bgCtx = bgCanvas.getContext('2d');
+    let bgWidth, bgHeight;
+    let particles = [];
+    let flyingPigs = [];
+    let mouseX = 0, mouseY = 0;
+
+    function resizeBgCanvas() {
+        bgWidth = window.innerWidth;
+        bgHeight = window.innerHeight;
+        bgCanvas.width = bgWidth;
+        bgCanvas.height = bgHeight;
+    }
+    window.addEventListener('resize', resizeBgCanvas);
+    resizeBgCanvas();
+
+    const PARTICLE_COUNT = 45;
+    class Particle {
+        constructor() {
+            this.x = Math.random() * bgWidth;
+            this.y = Math.random() * bgHeight;
+            this.size = Math.random() * 2 + 1;
+            this.speedX = (Math.random() - 0.5) * 0.4;
+            this.speedY = (Math.random() - 0.5) * 0.4;
+            this.opacity = Math.random() * 0.5 + 0.2;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            if (this.x < 0) this.x = bgWidth;
+            if (this.x > bgWidth) this.x = 0;
+            if (this.y < 0) this.y = bgHeight;
+            if (this.y > bgHeight) this.y = 0;
+            const dx = mouseX - this.x;
+            const dy = mouseY - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 100) {
+                const angle = Math.atan2(dy, dx);
+                const force = (100 - dist) / 100 * 1.2;
+                this.x -= Math.cos(angle) * force;
+                this.y -= Math.sin(angle) * force;
+            }
+        }
+        draw() {
+            bgCtx.beginPath();
+            bgCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            bgCtx.fillStyle = `rgba(255, 107, 107, ${this.opacity})`;
+            bgCtx.fill();
+        }
+    }
+
+    const PIG_COUNT = 6;
+    class FlyingPig {
+        constructor() {
+            this.x = Math.random() * bgWidth;
+            this.y = Math.random() * bgHeight;
+            this.size = Math.random() * 28 + 20;
+            this.speedX = (Math.random() - 0.5) * 0.3;
+            this.speedY = (Math.random() - 0.5) * 0.3;
+            this.opacity = Math.random() * 0.4 + 0.2;
+            this.rotation = Math.random() * Math.PI * 2;
+            this.rotationSpeed = (Math.random() - 0.5) * 0.01;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            this.rotation += this.rotationSpeed;
+            const dx = mouseX - this.x;
+            const dy = mouseY - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 100) {
+                const angle = Math.atan2(dy, dx);
+                const force = (100 - dist) / 100 * 1.0;
+                this.x -= Math.cos(angle) * force;
+                this.y -= Math.sin(angle) * force;
+            }
+            if (this.x < -60) this.x = bgWidth + 60;
+            if (this.x > bgWidth + 60) this.x = -60;
+            if (this.y < -60) this.y = bgHeight + 60;
+            if (this.y > bgHeight + 60) this.y = -60;
+        }
+        draw() {
+            bgCtx.save();
+            bgCtx.translate(this.x, this.y);
+            bgCtx.rotate(this.rotation);
+            bgCtx.font = `${this.size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            bgCtx.shadowBlur = 6;
+            bgCtx.shadowColor = "rgba(255,107,107,0.5)";
+            bgCtx.globalAlpha = this.opacity;
+            bgCtx.fillStyle = "#ffb347";
+            bgCtx.fillText("🐷", 0, 0);
+            bgCtx.globalAlpha = 1;
+            bgCtx.shadowBlur = 0;
+            bgCtx.restore();
+        }
+    }
+
+    function initBackground() {
+        particles = [];
+        for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(new Particle());
+        flyingPigs = [];
+        for (let i = 0; i < PIG_COUNT; i++) flyingPigs.push(new FlyingPig());
+    }
+    initBackground();
+
+    function animateBackground() {
+        if (!bgCtx) return;
+        bgCtx.clearRect(0, 0, bgWidth, bgHeight);
+        particles.forEach(p => { p.update(); p.draw(); });
+        flyingPigs.forEach(p => { p.update(); p.draw(); });
+        requestAnimationFrame(animateBackground);
+    }
+    animateBackground();
+
+    document.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+    document.addEventListener('touchmove', (e) => { const touch = e.touches[0]; mouseX = touch.clientX; mouseY = touch.clientY; });
+    document.addEventListener('touchend', () => { mouseX = -1000; mouseY = -1000; });
+
+    // ==================== ОСНОВНАЯ ИГРА ====================
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     let score = 0;
@@ -131,6 +293,8 @@
     let gameRunning = true;
     let spawnInterval;
     let animationId;
+    let missed = 0;
+    const MAX_MISS = 5;
 
     // Звуки хрюканья (три варианта)
     const sounds = [
@@ -140,11 +304,10 @@
     ];
     sounds.forEach(s => s.load());
 
-    // Игровые объекты
     const ITEM_TYPES = [
-        { name: '🌽', points: 1, color: '#f9c851' },
-        { name: '🍎', points: 1, color: '#e34234' },
-        { name: '🥕', points: 1, color: '#ffa500' }
+        { emoji: '🌽', points: 1 },
+        { emoji: '🍎', points: 1 },
+        { emoji: '🥕', points: 1 }
     ];
 
     class FoodItem {
@@ -159,9 +322,7 @@
         update() {
             this.y += this.speedY;
             this.x += this.speedX;
-            // исчезает, если упал ниже canvas
             if (this.y > canvas.height + 50) return false;
-            // отражение от боковых стенок
             if (this.x < this.radius) this.x = this.radius;
             if (this.x > canvas.width - this.radius) this.x = canvas.width - this.radius;
             return true;
@@ -178,18 +339,44 @@
         }
     }
 
-    // инициализация размеров canvas
-    function resizeCanvas() {
-        const container = canvas.parentElement;
-        const maxWidth = Math.min(800, container.clientWidth);
-        canvas.style.width = `${maxWidth}px`;
-        canvas.width = 800;
-        canvas.height = 500;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+    let pigX = canvas.width / 2;
+    const pigY = canvas.height - 50;
+    const pigRadius = 30;
 
-    // спавн еды
+    function updatePigPosition(clientX) {
+        if (!gameRunning) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        let canvasX = (clientX - rect.left) * scaleX;
+        canvasX = Math.min(Math.max(canvasX, pigRadius), canvas.width - pigRadius);
+        pigX = canvasX;
+    }
+
+    function handleMove(e) {
+        let clientX;
+        if (e.touches) {
+            clientX = e.touches[0].clientX;
+            e.preventDefault();
+        } else {
+            clientX = e.clientX;
+        }
+        updatePigPosition(clientX);
+    }
+
+    function checkCollisions() {
+        for (let i = items.length-1; i >= 0; i--) {
+            const item = items[i];
+            const dx = pigX - item.x;
+            const dy = pigY - item.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < pigRadius + item.radius) {
+                items.splice(i,1);
+                addScore(item.type.points);
+                playOink();
+            }
+        }
+    }
+
     function spawnItem() {
         if (!gameRunning) return;
         const type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
@@ -198,7 +385,6 @@
         items.push(new FoodItem(x, y, type));
     }
 
-    // обновление счёта и рекорда
     function addScore(points) {
         score += points;
         document.getElementById('score').innerText = score;
@@ -209,122 +395,113 @@
         }
     }
 
-    // проигрывание случайного хрюка
+    function addMiss() {
+        missed++;
+        document.getElementById('miss').innerText = missed;
+        if (missed >= MAX_MISS) {
+            gameOver();
+        }
+    }
+
     function playOink() {
         const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
         randomSound.currentTime = 0;
         randomSound.play().catch(e => console.log("Audio play failed", e));
     }
 
-    // обработка клика по канвасу
-    function handleCanvasClick(e) {
+    function gameOver() {
         if (!gameRunning) return;
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        let clickX, clickY;
-        if (e.touches) {
-            // тач
-            clickX = (e.touches[0].clientX - rect.left) * scaleX;
-            clickY = (e.touches[0].clientY - rect.top) * scaleY;
-        } else {
-            clickX = (e.clientX - rect.left) * scaleX;
-            clickY = (e.clientY - rect.top) * scaleY;
-        }
-        // ищем предмет, на который кликнули
-        for (let i = items.length-1; i >= 0; i--) {
-            const item = items[i];
-            const dx = clickX - item.x;
-            const dy = clickY - item.y;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < item.radius) {
-                items.splice(i,1);
-                addScore(item.type.points);
-                playOink();
-                break;
-            }
-        }
+        gameRunning = false;
+        if (spawnInterval) clearInterval(spawnInterval);
+        document.getElementById('gameOverMsg').style.display = 'block';
     }
 
-    // анимация
     function animate() {
         if (!ctx) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // рисуем свинью (внизу)
+
+        // Обновляем и рисуем предметы
+        for (let i=0; i<items.length; i++) {
+            const item = items[i];
+            const alive = item.update();
+            if (!alive) {
+                items.splice(i,1);
+                addMiss();
+                i--;
+            } else {
+                item.draw();
+            }
+        }
+
+        // Рисуем свинью
         ctx.save();
         ctx.font = '64px "Segoe UI Emoji", "Apple Color Emoji"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.shadowBlur = 12;
         ctx.shadowColor = "#ff6b6b";
-        ctx.fillText("🐷", canvas.width/2, canvas.height-40);
+        ctx.fillText("🐷", pigX, pigY);
         ctx.restore();
-        // рисуем еду
-        for (let i=0; i<items.length; i++) {
-            const item = items[i];
-            const alive = item.update();
-            if (!alive) {
-                items.splice(i,1);
-                i--;
-            } else {
-                item.draw();
-            }
+
+        if (gameRunning) {
+            checkCollisions();
         }
-        // обновляем счетчик на экране
-        document.getElementById('score').innerText = score;
-        document.getElementById('best').innerText = bestScore;
+
         animationId = requestAnimationFrame(animate);
     }
 
-    // запуск игры
     function startGame() {
         if (spawnInterval) clearInterval(spawnInterval);
         items = [];
         score = 0;
+        missed = 0;
         gameRunning = true;
+        pigX = canvas.width / 2;
         document.getElementById('score').innerText = '0';
+        document.getElementById('miss').innerText = '0';
+        document.getElementById('gameOverMsg').style.display = 'none';
         spawnInterval = setInterval(() => {
             if (gameRunning) spawnItem();
         }, 800);
+        if (animationId) cancelAnimationFrame(animationId);
         animate();
     }
 
-    // сброс игры (новая игра)
     function resetGame() {
-        gameRunning = false;
         if (spawnInterval) clearInterval(spawnInterval);
+        gameRunning = false;
         cancelAnimationFrame(animationId);
         items = [];
         score = 0;
+        missed = 0;
+        pigX = canvas.width / 2;
         document.getElementById('score').innerText = '0';
+        document.getElementById('miss').innerText = '0';
+        document.getElementById('gameOverMsg').style.display = 'none';
         startGame();
     }
 
-    // обработчики
-    canvas.addEventListener('click', handleCanvasClick);
+    function resizeGameCanvas() {
+        const container = canvas.parentElement;
+        const maxWidth = Math.min(800, container.clientWidth);
+        canvas.style.width = `${maxWidth}px`;
+        canvas.width = 800;
+        canvas.height = 500;
+        pigX = canvas.width / 2;
+    }
+    window.addEventListener('resize', resizeGameCanvas);
+    resizeGameCanvas();
+
+    canvas.addEventListener('mousemove', handleMove);
+    canvas.addEventListener('touchmove', handleMove, { passive: false });
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        const rect = canvas.getBoundingClientRect();
-        const touch = e.touches[0];
-        const clickX = (touch.clientX - rect.left) * (canvas.width / rect.width);
-        const clickY = (touch.clientY - rect.top) * (canvas.height / rect.height);
-        // эмулируем клик
-        for (let i=items.length-1; i>=0; i--) {
-            const item = items[i];
-            const dx = clickX - item.x;
-            const dy = clickY - item.y;
-            if (Math.sqrt(dx*dx+dy*dy) < item.radius) {
-                items.splice(i,1);
-                addScore(item.type.points);
-                playOink();
-                break;
-            }
-        }
-    }, { passive: false });
+        handleMove(e);
+    });
 
     document.getElementById('resetGame').addEventListener('click', resetGame);
 
-    // стартуем
+    document.getElementById('best').innerText = bestScore;
     startGame();
 </script>
 </body>
