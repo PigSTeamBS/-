@@ -52,21 +52,24 @@
             margin-bottom: 20px;
             padding: 0 16px;
         }
-        .score-box, .best-box, .miss-box {
+        .score-box, .best-box, .miss-box, .speed-box {
             background: rgba(0,0,0,0.6);
             border-radius: 40px;
             padding: 8px 20px;
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             font-weight: bold;
             color: #ffb347;
             border: 1px solid #ff6b6b;
         }
-        .score-box span, .best-box span, .miss-box span {
+        .score-box span, .best-box span, .miss-box span, .speed-box span {
             color: white;
-            font-size: 1rem;
+            font-size: 0.9rem;
         }
         .miss-box {
             color: #ff8888;
+        }
+        .speed-box {
+            color: #88ff88;
         }
         .canvas-wrapper {
             display: flex;
@@ -102,6 +105,25 @@
             text-align: center;
             box-shadow: 0 0 20px rgba(255,107,107,0.5);
         }
+        .speed-popup {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px);
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #ffb347;
+            border: 1px solid #ff6b6b;
+            white-space: nowrap;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
         .controls {
             display: flex;
             justify-content: center;
@@ -135,7 +157,7 @@
             border-bottom: 1px dashed;
         }
         @media (max-width: 600px) {
-            .score-box, .best-box, .miss-box { font-size: 1.2rem; padding: 4px 16px; }
+            .score-box, .best-box, .miss-box, .speed-box { font-size: 1rem; padding: 4px 12px; }
             button { padding: 6px 18px; }
             .game-over-message { font-size: 1.4rem; padding: 12px 24px; white-space: nowrap; }
         }
@@ -150,10 +172,12 @@
         <div class="score-box">🐷 <span id="score">0</span></div>
         <div class="best-box">🏆 <span id="best">0</span></div>
         <div class="miss-box">❌ <span id="miss">0</span> / 5</div>
+        <div class="speed-box">⚡ <span id="speedMultiplier">1.0</span>x</div>
     </div>
     <div class="canvas-wrapper">
-        <canvas id="gameCanvas" width="800" height="500" style="width:100%; height:auto; max-width:800px; aspect-ratio:800/500"></canvas>
+        <canvas id="gameCanvas" width="900" height="600" style="width:100%; height:auto; max-width:900px; aspect-ratio:900/600"></canvas>
         <div id="gameOverMsg" class="game-over-message" style="display: none;">GAME OVER</div>
+        <div id="speedPopup" class="speed-popup" style="opacity:0;">SPEED UP!</div>
     </div>
     <div class="controls">
         <button id="resetGame">Новая игра</button>
@@ -311,12 +335,14 @@
     ];
 
     class FoodItem {
-        constructor(x, y, type) {
+        constructor(x, y, type, speedMultiplier) {
             this.x = x;
             this.y = y;
             this.type = type;
-            this.radius = 20;
-            this.speedY = Math.random() * 1.5 + 1.2;
+            this.radius = 28;      // увеличен радиус
+            // базовая скорость + случайный разброс, умноженная на общий множитель
+            let baseSpeed = 1.5 + Math.random() * 1.0;
+            this.speedY = baseSpeed * speedMultiplier;
             this.speedX = (Math.random() - 0.5) * 0.8;
         }
         update() {
@@ -340,8 +366,38 @@
     }
 
     let pigX = canvas.width / 2;
-    const pigY = canvas.height - 50;
-    const pigRadius = 30;
+    const pigY = canvas.height - 60;
+    const pigRadius = 42;   // увеличен радиус свиньи
+
+    // Динамическая сложность
+    let currentSpeedMultiplier = 1.0;
+    let lastScoreThreshold = 0;
+    const SPEED_INCREASE_STEP = 0.3;   // +0.3 каждые 15 очков
+    const SPAWN_BASE_INTERVAL = 800;    // мс
+    const MIN_SPAWN_INTERVAL = 400;
+
+    function updateDifficulty() {
+        let newMultiplier = 1 + Math.floor(score / 15) * SPEED_INCREASE_STEP;
+        newMultiplier = Math.min(newMultiplier, 2.5); // макс 2.5x
+        if (newMultiplier > currentSpeedMultiplier && score > 0) {
+            // показываем всплывашку
+            const popup = document.getElementById('speedPopup');
+            popup.style.opacity = '1';
+            setTimeout(() => { popup.style.opacity = '0'; }, 1000);
+        }
+        currentSpeedMultiplier = newMultiplier;
+        document.getElementById('speedMultiplier').innerText = currentSpeedMultiplier.toFixed(1);
+        
+        // пересчёт интервала спавна
+        let interval = SPAWN_BASE_INTERVAL / (1 + Math.floor(score / 20) * 0.25);
+        interval = Math.max(interval, MIN_SPAWN_INTERVAL);
+        if (spawnInterval) {
+            clearInterval(spawnInterval);
+            spawnInterval = setInterval(() => {
+                if (gameRunning) spawnItem();
+            }, interval);
+        }
+    }
 
     function updatePigPosition(clientX) {
         if (!gameRunning) return;
@@ -382,7 +438,7 @@
         const type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
         const x = 30 + Math.random() * (canvas.width - 60);
         const y = -20;
-        items.push(new FoodItem(x, y, type));
+        items.push(new FoodItem(x, y, type, currentSpeedMultiplier));
     }
 
     function addScore(points) {
@@ -393,6 +449,7 @@
             localStorage.setItem('pigGameBest', bestScore);
             document.getElementById('best').innerText = bestScore;
         }
+        updateDifficulty();
     }
 
     function addMiss() {
@@ -420,9 +477,15 @@
         if (!ctx) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Обновляем и рисуем предметы
+        // Обновляем и рисуем предметы с учётом текущей сложности
         for (let i=0; i<items.length; i++) {
             const item = items[i];
+            // обновляем скорость предмета в соответствии с текущим множителем (для плавности)
+            // но проще пересоздавать? Нет, будем динамически менять скорость каждого предмета
+            // для плавного ускорения уже падающих фруктов
+            let targetSpeedY = (1.5 + Math.random()*1.0) * currentSpeedMultiplier;
+            // плавно приближаем скорость к целевой
+            item.speedY = item.speedY * 0.98 + targetSpeedY * 0.02;
             const alive = item.update();
             if (!alive) {
                 items.splice(i,1);
@@ -435,11 +498,17 @@
 
         // Рисуем свинью
         ctx.save();
-        ctx.font = '64px "Segoe UI Emoji", "Apple Color Emoji"';
+        // добавляем свечение при высокой скорости
+        if (currentSpeedMultiplier > 1.5) {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#ff6b6b";
+        } else {
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = "#ff6b6b";
+        }
+        ctx.font = '72px "Segoe UI Emoji", "Apple Color Emoji"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = "#ff6b6b";
         ctx.fillText("🐷", pigX, pigY);
         ctx.restore();
 
@@ -457,12 +526,16 @@
         missed = 0;
         gameRunning = true;
         pigX = canvas.width / 2;
+        currentSpeedMultiplier = 1.0;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
+        document.getElementById('speedMultiplier').innerText = '1.0';
         document.getElementById('gameOverMsg').style.display = 'none';
+        // начальный интервал
+        let interval = SPAWN_BASE_INTERVAL;
         spawnInterval = setInterval(() => {
             if (gameRunning) spawnItem();
-        }, 800);
+        }, interval);
         if (animationId) cancelAnimationFrame(animationId);
         animate();
     }
@@ -474,19 +547,21 @@
         items = [];
         score = 0;
         missed = 0;
+        currentSpeedMultiplier = 1.0;
         pigX = canvas.width / 2;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
+        document.getElementById('speedMultiplier').innerText = '1.0';
         document.getElementById('gameOverMsg').style.display = 'none';
         startGame();
     }
 
     function resizeGameCanvas() {
         const container = canvas.parentElement;
-        const maxWidth = Math.min(800, container.clientWidth);
+        const maxWidth = Math.min(900, container.clientWidth);
         canvas.style.width = `${maxWidth}px`;
-        canvas.width = 800;
-        canvas.height = 500;
+        canvas.width = 900;
+        canvas.height = 600;
         pigX = canvas.width / 2;
     }
     window.addEventListener('resize', resizeGameCanvas);
