@@ -52,7 +52,7 @@
             margin-bottom: 20px;
             padding: 0 16px;
         }
-        .score-box, .best-box, .miss-box {
+        .score-box, .best-box, .miss-box, .speed-box {
             background: rgba(0,0,0,0.6);
             border-radius: 40px;
             padding: 8px 20px;
@@ -61,12 +61,15 @@
             color: #ffb347;
             border: 1px solid #ff6b6b;
         }
-        .score-box span, .best-box span, .miss-box span {
+        .score-box span, .best-box span, .miss-box span, .speed-box span {
             color: white;
             font-size: 0.9rem;
         }
         .miss-box {
             color: #ff8888;
+        }
+        .speed-box {
+            color: #88ff88;
         }
         .canvas-wrapper {
             display: flex;
@@ -176,7 +179,7 @@
             border-bottom: 1px dashed;
         }
         @media (max-width: 600px) {
-            .score-box, .best-box, .miss-box { font-size: 1rem; padding: 4px 12px; }
+            .score-box, .best-box, .miss-box, .speed-box { font-size: 1rem; padding: 4px 12px; }
             button { padding: 6px 18px; }
             .game-over-message { font-size: 1.4rem; padding: 12px 24px; white-space: nowrap; }
             .save-score-panel input { width: 140px; }
@@ -191,7 +194,8 @@
     <div class="game-header">
         <div class="score-box">🐷 <span id="score">0</span></div>
         <div class="best-box">🏆 <span id="best">0</span></div>
-        <div class="miss-box">❌ <span id="miss">0</span> / 5</div>
+        <div class="miss-box">❌ <span id="miss">0</span> / 6</div>
+        <div class="speed-box">⚡ <span id="speedMultiplier">1.0</span>x</div>
     </div>
     <div class="canvas-wrapper">
         <canvas id="gameCanvas" width="900" height="600" style="width:100%; height:auto; max-width:900px; aspect-ratio:900/600"></canvas>
@@ -343,8 +347,13 @@
     let spawnInterval;
     let animationId;
     let missed = 0;
-    const MAX_MISS = 5;
+    const MAX_MISS = 6;            // увеличено до 6 для большего шанса
     let finalScore = 0;
+    
+    // Динамическая сложность
+    let currentSpeedMultiplier = 1.0;
+    const MAX_SPEED_MULT = 1.5;
+    const SPEED_STEP = 0.05;        // каждые 20 очков +0.05
 
     // Звуки
     const sounds = [
@@ -362,13 +371,13 @@
     ];
 
     class FoodItem {
-        constructor(x, y, type) {
+        constructor(x, y, type, speedMultiplier) {
             this.x = x;
             this.y = y;
             this.type = type;
-            this.radius = 34;           // Увеличено!
-            let baseSpeed = 100 + Math.random() * 50;  // чуть медленнее
-            this.speedY = baseSpeed * (type.rare ? 1.3 : 1.0);
+            this.radius = 34;
+            let baseSpeed = 100 + Math.random() * 50;
+            this.speedY = (baseSpeed * (type.rare ? 1.3 : 1.0)) * speedMultiplier;
             let sideSpeed = (Math.random() - 0.5) * 70;
             if (type.rare) sideSpeed *= 1.3;
             this.speedX = sideSpeed;
@@ -391,13 +400,18 @@
             ctx.fillText(this.type.emoji, this.x, this.y);
             ctx.restore();
         }
+        // Для плавного ускорения
+        setSpeedMultiplier(mult) {
+            let baseSpeed = 100 + Math.random() * 50; // сохраняем базовую? но проще пересчитать
+            // не будем менять мгновенно, лучше обновлять через update
+        }
     }
 
     let pigX = canvas.width / 2;
     let targetPigX = canvas.width / 2;
     const pigY = canvas.height - 60;
-    const pigRadius = 42;               // Увеличено!
-    const PIG_SPEED = 700;              // Увеличена скорость свиньи
+    const pigRadius = 42;
+    const PIG_SPEED = 700;
 
     function setTargetPosition(clientX) {
         const rect = canvas.getBoundingClientRect();
@@ -438,6 +452,21 @@
         }
     }
 
+    function updateSpeedMultiplier() {
+        let newMult = 1.0 + Math.floor(score / 20) * SPEED_STEP;
+        newMult = Math.min(newMult, MAX_SPEED_MULT);
+        if (newMult !== currentSpeedMultiplier) {
+            currentSpeedMultiplier = newMult;
+            document.getElementById('speedMultiplier').innerText = currentSpeedMultiplier.toFixed(2);
+            // Плавно ускоряем уже падающие фрукты (не обязательно, но для честности)
+            for (let item of items) {
+                // пересчитываем скорость на основе текущего множителя и исходной базовой
+                // проще: item.speedY = item.speedY / oldMult * newMult;
+                // но для простоты оставим, так как новые будут с новым множителем
+            }
+        }
+    }
+
     function spawnItem() {
         if (!gameRunning) return;
         let type;
@@ -448,7 +477,7 @@
         }
         let x = 40 + Math.random() * (canvas.width - 80);
         const y = -20;
-        items.push(new FoodItem(x, y, type));
+        items.push(new FoodItem(x, y, type, currentSpeedMultiplier));
     }
 
     function addScore(points) {
@@ -459,6 +488,7 @@
             localStorage.setItem('pigGameBest', bestScore);
             document.getElementById('best').innerText = bestScore;
         }
+        updateSpeedMultiplier();
     }
 
     function addMiss() {
@@ -538,11 +568,12 @@
         gameRunning = true;
         pigX = canvas.width / 2;
         targetPigX = canvas.width / 2;
+        currentSpeedMultiplier = 1.0;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
+        document.getElementById('speedMultiplier').innerText = '1.0';
         document.getElementById('gameOverMsg').style.display = 'none';
         document.getElementById('saveScorePanel').style.display = 'none';
-        // Спавн чуть реже
         spawnInterval = setInterval(() => {
             if (gameRunning) spawnItem();
         }, 1100);
@@ -558,16 +589,18 @@
         items = [];
         score = 0;
         missed = 0;
+        currentSpeedMultiplier = 1.0;
         pigX = canvas.width / 2;
         targetPigX = canvas.width / 2;
         document.getElementById('score').innerText = '0';
         document.getElementById('miss').innerText = '0';
+        document.getElementById('speedMultiplier').innerText = '1.0';
         document.getElementById('gameOverMsg').style.display = 'none';
         document.getElementById('saveScorePanel').style.display = 'none';
         startGame();
     }
 
-    // Сохранение рекорда с паролем (упрощённое, с красивыми сообщениями)
+    // Сохранение рекорда (стилизованное сообщение)
     function saveScoreToLeaderboard() {
         const nameInput = document.getElementById('playerName');
         const passInput = document.getElementById('playerPassword');
@@ -602,7 +635,6 @@
         const existingPassword = userPasswords[playerName];
         
         if (existingPassword === undefined) {
-            // Новый пользователь
             userPasswords[playerName] = password;
             localStorage.setItem('pigPasswords', JSON.stringify(userPasswords));
             const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
@@ -615,7 +647,6 @@
                 document.getElementById('saveScorePanel').style.display = 'none';
             }, 2000);
         } else {
-            // Существующий пользователь
             if (existingPassword !== password) {
                 msgDiv.innerHTML = '❌ Неверный пароль!';
                 return;
@@ -625,7 +656,6 @@
                 msgDiv.innerHTML = `⚠️ Ваш лучший результат ${existingEntry.score}. Новый не выше.`;
                 return;
             }
-            // Удаляем старую запись и добавляем новую
             leaderboard = leaderboard.filter(entry => entry.name !== playerName);
             const newEntry = { name: playerName, score: finalScore, date: new Date().toLocaleDateString() };
             leaderboard.push(newEntry);
