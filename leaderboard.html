@@ -103,9 +103,6 @@
             background: rgba(255,107,107,0.4);
             transform: scale(1.02);
         }
-        .file-input {
-            display: none;
-        }
         .back-link {
             margin-top: 20px;
         }
@@ -115,6 +112,10 @@
             font-weight: 600;
             border-bottom: 1px dashed;
         }
+        .loading {
+            color: #ffb347;
+            padding: 20px;
+        }
         @media (max-width: 600px) {
             .leaderboard-container { padding: 20px; }
             h1 { font-size: 1.8rem; }
@@ -123,24 +124,15 @@
     </style>
 </head>
 <body>
-
 <canvas id="bg-canvas"></canvas>
-
 <div class="leaderboard-container">
     <h1><i class="fas fa-trophy"></i> Таблица рекордов</h1>
-    <div id="leaderboardTable">
-        <!-- таблица заполняется скриптом -->
-    </div>
+    <div id="leaderboardTable"><div class="loading">Загрузка рекордов...</div></div>
     <div class="buttons">
-        <button id="exportBtn">💾 Экспорт</button>
-        <button id="importBtn">📂 Импорт</button>
-        <button id="resetLeaderboard">🗑️ Сбросить таблицу</button>
+        <button id="refreshBtn">🔄 Обновить</button>
         <button id="backToGame">← Вернуться в игру</button>
     </div>
-    <input type="file" id="importFile" accept=".pig" style="display:none">
-    <div class="back-link">
-        <a href="index.html">На главный сайт</a>
-    </div>
+    <div class="back-link"><a href="index.html">На главный сайт</a></div>
 </div>
 
 <script>
@@ -263,31 +255,27 @@
     document.addEventListener('touchmove', (e) => { const touch = e.touches[0]; mouseX = touch.clientX; mouseY = touch.clientY; });
     document.addEventListener('touchend', () => { mouseX = -1000; mouseY = -1000; });
 
-    // ==================== ТАБЛИЦА РЕКОРДОВ ====================
-    function getLeaderboard() {
+    // ==================== MockAPI ====================
+    const API_URL = "https://69cd2d94ddc3cabb7bd24353.mockapi.io/leaderboard";
+
+    async function fetchLeaderboard() {
         try {
-            let raw = localStorage.getItem('pigLeaderboard');
-            if (!raw) return [];
-            let data = JSON.parse(raw);
+            const response = await fetch(API_URL);
+            let data = await response.json();
             if (!Array.isArray(data)) return [];
-            data = data.filter(entry => entry && typeof entry === 'object' && typeof entry.name === 'string' && typeof entry.score === 'number');
-            data.sort((a, b) => b.score - a.score);
-            return data.slice(0, 10);
+            data.sort((a,b) => b.score - a.score);
+            return data.slice(0,10);
         } catch (e) {
-            console.error("Ошибка чтения таблицы рекордов:", e);
+            console.error(e);
             return [];
         }
     }
 
-    function saveLeaderboard(data) {
-        localStorage.setItem('pigLeaderboard', JSON.stringify(data));
-    }
-
-    function loadLeaderboard() {
-        const leaderboard = getLeaderboard();
+    async function loadLeaderboard() {
         const container = document.getElementById('leaderboardTable');
-        if (!container) return;
-        if (leaderboard.length === 0) {
+        container.innerHTML = '<div class="loading">Загрузка рекордов...</div>';
+        const leaderboard = await fetchLeaderboard();
+        if (!leaderboard || leaderboard.length === 0) {
             container.innerHTML = '<div class="empty-message">Пока нет рекордов. Стань первым!</div>';
             return;
         }
@@ -314,84 +302,49 @@
         container.innerHTML = html;
     }
 
-    function resetLeaderboard() {
-        if (confirm('Сбросить таблицу рекордов? Это действие нельзя отменить.')) {
-            localStorage.removeItem('pigLeaderboard');
-            localStorage.removeItem('pigPasswords');
-            loadLeaderboard();
-        }
-    }
-
-    // Экспорт
-    function exportLeaderboard() {
-        let leaderboard = getLeaderboard();
-        let dataStr = JSON.stringify(leaderboard, null, 2);
-        let blob = new Blob([dataStr], {type: "application/json"});
-        let url = URL.createObjectURL(blob);
-        let a = document.createElement('a');
-        a.href = url;
-        a.download = `pigs_leaderboard_${new Date().toISOString().slice(0,19)}.pig`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    // Импорт
-    function importLeaderboard(file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                let imported = JSON.parse(e.target.result);
-                if (!Array.isArray(imported)) throw new Error("Не массив");
-                // проверяем структуру
-                imported = imported.filter(entry => entry && typeof entry.name === 'string' && typeof entry.score === 'number');
-                if (imported.length === 0) {
-                    alert("Файл не содержит корректных рекордов.");
-                    return;
+    // Функция для добавления рекорда из game.html (будет доступна глобально)
+    window.addOnlineRecord = async function(name, score) {
+        try {
+            // Проверим, есть ли уже запись для этого имени
+            const checkResponse = await fetch(API_URL + `?name=${encodeURIComponent(name)}`);
+            let existing = await checkResponse.json();
+            if (existing.length > 0) {
+                const record = existing[0];
+                if (score > record.score) {
+                    await fetch(API_URL + '/' + record.id, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: name,
+                            score: score,
+                            date: new Date().toLocaleDateString()
+                        })
+                    });
+                    return true;
+                } else {
+                    return false; // новый счёт не выше
                 }
-                let current = getLeaderboard();
-                // объединяем: сохраняем лучший результат для каждого имени
-                let merged = [...current];
-                for (let newEntry of imported) {
-                    let existing = merged.find(e => e.name === newEntry.name);
-                    if (existing) {
-                        if (newEntry.score > existing.score) {
-                            existing.score = newEntry.score;
-                            existing.date = newEntry.date || existing.date;
-                        }
-                    } else {
-                        merged.push(newEntry);
-                    }
-                }
-                merged.sort((a,b) => b.score - a.score);
-                merged = merged.slice(0, 10);
-                saveLeaderboard(merged);
-                // также обновляем пароли? оставляем как есть
-                loadLeaderboard();
-                alert(`Импортировано ${imported.length} записей. Объединённая таблица обновлена.`);
-            } catch(err) {
-                alert("Ошибка при импорте: неверный формат файла.");
+            } else {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        score: score,
+                        date: new Date().toLocaleDateString()
+                    })
+                });
+                return true;
             }
-        };
-        reader.readAsText(file);
-    }
+        } catch(e) {
+            console.error(e);
+            return false;
+        }
+    };
 
-    document.getElementById('exportBtn').addEventListener('click', exportLeaderboard);
-    document.getElementById('resetLeaderboard').addEventListener('click', resetLeaderboard);
+    document.getElementById('refreshBtn').addEventListener('click', loadLeaderboard);
     document.getElementById('backToGame').addEventListener('click', () => {
         window.location.href = 'game.html';
-    });
-
-    const importFileInput = document.getElementById('importFile');
-    document.getElementById('importBtn').addEventListener('click', () => {
-        importFileInput.click();
-    });
-    importFileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            importLeaderboard(e.target.files[0]);
-            importFileInput.value = '';
-        }
     });
 
     loadLeaderboard();
