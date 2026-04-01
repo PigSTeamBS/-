@@ -317,6 +317,32 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* Тизер игры */
+        .game-teaser {
+            text-align: center;
+            margin-top: 20px;
+            margin-bottom: -40px;
+            position: relative;
+            z-index: 2;
+        }
+        .game-teaser a {
+            display: inline-block;
+            background: rgba(255,107,107,0.15);
+            backdrop-filter: blur(8px);
+            padding: 12px 28px;
+            border-radius: 60px;
+            color: #ffb347;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid rgba(255,107,107,0.4);
+            transition: all 0.2s;
+        }
+        .game-teaser a:hover {
+            background: rgba(255,107,107,0.3);
+            transform: scale(1.02);
+            color: #ffd966;
+        }
+
         /* Карточки игроков (стеклянные) */
         .roster-grid {
             display: grid;
@@ -551,6 +577,84 @@
             color: #777;
         }
 
+        /* Стили для мини-игры */
+        #pig-clicker-game {
+            text-align: center;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: rgba(19, 19, 22, 0.6);
+            backdrop-filter: blur(12px);
+            border-radius: 64px;
+            border: 1px solid rgba(255,107,107,0.4);
+            transition: all 0.2s;
+        }
+        .pig-clicker {
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.1s ease;
+            display: inline-block;
+        }
+        .pig-clicker:active {
+            transform: scale(0.96);
+        }
+        .pig-clicker img {
+            width: 220px;
+            height: auto;
+            filter: drop-shadow(0 0 15px #ff6b6b);
+        }
+        @media (max-width: 540px) {
+            .pig-clicker img {
+                width: 160px;
+            }
+        }
+        .clicker-score {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin: 20px 0;
+            background: linear-gradient(135deg, #ffb347, #ff6b6b);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .clicker-btn-reset {
+            background: rgba(255,107,107,0.2);
+            border: 1px solid #ff6b6b;
+            color: #ffb347;
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 10px;
+        }
+        .clicker-btn-reset:hover {
+            background: rgba(255,107,107,0.4);
+            transform: translateY(-2px);
+        }
+        .clicker-hit {
+            animation: hitPulse 0.2s ease;
+        }
+        @keyframes hitPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); text-shadow: 0 0 20px #ff6b6b; }
+            100% { transform: scale(1); }
+        }
+        .floating-number {
+            position: fixed;
+            pointer-events: none;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ffb347;
+            text-shadow: 0 0 8px #ff6b6b;
+            z-index: 200;
+            animation: floatUp 0.8s ease-out forwards;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0px); }
+            100% { opacity: 0; transform: translateY(-60px); }
+        }
+
         @media (max-width: 880px) {
             .container { padding: 0 24px; }
             .hero h2 { font-size: 2.5rem; }
@@ -590,6 +694,7 @@
             <li><a href="#roster">Состав</a></li>
             <li><a href="#achievements">Достижения</a></li>
             <li><a href="#news">Новости</a></li>
+            <li><a href="#game">Игра</a></li>
             <li><a href="#contact">Контакты</a></li>
         </ul>
     </div>
@@ -607,6 +712,11 @@ PiGs Team — доминирование на арене, хрю-тактики 
             </div>
         </div>
     </section>
+
+    <!-- Тизер игры -->
+    <div class="game-teaser container">
+        <a href="#game">🐷 Не скучай — сыграй в нашу игру! 🎮</a>
+    </div>
 
     <section id="roster">
         <div class="container">
@@ -664,6 +774,21 @@ PiGs Team — доминирование на арене, хрю-тактики 
 </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Секция мини-игры -->
+    <section id="game">
+        <div class="container">
+            <h2 class="section-title fade-up">🐷 Хрюк-сила</h2>
+            <div id="pig-clicker-game" class="fade-up">
+                <div class="pig-clicker" id="clicker-pig">
+                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23ffb347'/%3E%3Ccircle cx='30' cy='40' r='5' fill='%23333'/%3E%3Ccircle cx='70' cy='40' r='5' fill='%23333'/%3E%3Cpath d='M35 65 Q50 75 65 65' stroke='%23333' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
+                         alt="Свинья" style="width: 100%; max-width: 220px;">
+                </div>
+                <div class="clicker-score" id="clicker-score">0</div>
+                <button class="clicker-btn-reset" id="reset-score">Сбросить счёт</button>
             </div>
         </div>
     </section>
@@ -739,7 +864,7 @@ PiGs Team — доминирование на арене, хрю-тактики 
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Частицы (светящиеся точки)
+    // Частицы
     const PARTICLE_COUNT = 45;
     class Particle {
         constructor() {
@@ -757,7 +882,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
             if (this.x > width) this.x = 0;
             if (this.y < 0) this.y = height;
             if (this.y > height) this.y = 0;
-            // реакция на мышь
             const dx = mouseX - this.x;
             const dy = mouseY - this.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
@@ -776,13 +900,13 @@ PiGs Team — доминирование на арене, хрю-тактики 
         }
     }
 
-    // Свиньи (мало, 6 штук)
+    // Свиньи
     const PIG_COUNT = 6;
     class FlyingPig {
         constructor() {
             this.x = Math.random() * width;
             this.y = Math.random() * height;
-            this.size = Math.random() * 28 + 20;   // размер шрифта 20-48px
+            this.size = Math.random() * 28 + 20;
             this.speedX = (Math.random() - 0.5) * 0.3;
             this.speedY = (Math.random() - 0.5) * 0.3;
             this.opacity = Math.random() * 0.4 + 0.2;
@@ -793,7 +917,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
             this.x += this.speedX;
             this.y += this.speedY;
             this.rotation += this.rotationSpeed;
-            // отталкивание от курсора
             const dx = mouseX - this.x;
             const dy = mouseY - this.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
@@ -803,7 +926,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
                 this.x -= Math.cos(angle) * force;
                 this.y -= Math.sin(angle) * force;
             }
-            // границы
             if (this.x < -60) this.x = width + 60;
             if (this.x > width + 60) this.x = -60;
             if (this.y < -60) this.y = height + 60;
@@ -842,7 +964,6 @@ PiGs Team — доминирование на арене, хрю-тактики 
     }
     animate();
 
-    // Отслеживание мыши/касаний
     document.addEventListener('mousemove', (e) => {
         mouseX = e.clientX;
         mouseY = e.clientY;
@@ -857,11 +978,76 @@ PiGs Team — доминирование на арене, хрю-тактики 
         mouseY = -1000;
     });
 
-    // Задержка для карточек
     const cards = document.querySelectorAll('.player-card, .achieve-item, .news-card');
     cards.forEach((card, idx) => {
         card.style.transitionDelay = `${idx * 0.03}s`;
     });
+
+    // ========== ИГРА-КЛИКЕР ==========
+    let score = localStorage.getItem('pigScore') ? parseInt(localStorage.getItem('pigScore')) : 0;
+    const scoreElement = document.getElementById('clicker-score');
+    const pigElement = document.getElementById('clicker-pig');
+    const resetBtn = document.getElementById('reset-score');
+
+    // Звуки (три варианта)
+    const sounds = [
+        new Audio('https://zvukogram.com/zvuk/73601/'),
+        new Audio('https://zvukogram.com/zvuk/37934/'),
+        new Audio('https://zvukogram.com/zvuk/73608/')
+    ];
+    // Попробуем их загрузить и разрешить автоплей (но браузер может блокировать, пока не кликнет)
+    sounds.forEach(s => s.load());
+
+    function updateScoreDisplay() {
+        scoreElement.innerText = score;
+        localStorage.setItem('pigScore', score);
+    }
+
+    function playRandomOink() {
+        const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
+        randomSound.currentTime = 0;
+        randomSound.play().catch(e => console.log("Audio play failed", e));
+    }
+
+    function createFloatingNumber(x, y, value) {
+        const div = document.createElement('div');
+        div.className = 'floating-number';
+        div.innerText = `+${value}`;
+        div.style.left = `${x}px`;
+        div.style.top = `${y}px`;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 800);
+    }
+
+    function handlePigClick(e) {
+        score++;
+        updateScoreDisplay();
+        playRandomOink();
+
+        // Анимация свиньи
+        pigElement.classList.add('clicker-hit');
+        setTimeout(() => pigElement.classList.remove('clicker-hit'), 150);
+
+        // Парящий +1
+        const rect = pigElement.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        createFloatingNumber(centerX - 20, centerY - 20, 1);
+    }
+
+    pigElement.addEventListener('click', handlePigClick);
+    pigElement.addEventListener('touchstart', handlePigClick, { passive: false });
+
+    resetBtn.addEventListener('click', () => {
+        score = 0;
+        updateScoreDisplay();
+        playRandomOink();
+        // эффект сброса
+        const rect = resetBtn.getBoundingClientRect();
+        createFloatingNumber(rect.left + rect.width/2, rect.top + rect.height/2, 0);
+    });
+
+    updateScoreDisplay();
 </script>
 </body>
 </html>
