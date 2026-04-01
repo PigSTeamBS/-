@@ -155,14 +155,14 @@
     window.addEventListener('resize', resizeBgCanvas);
     resizeBgCanvas();
 
-    const PARTICLE_COUNT = 45;
+    const PARTICLE_COUNT = 40;
     class Particle {
         constructor() {
             this.x = Math.random() * bgWidth;
             this.y = Math.random() * bgHeight;
             this.size = Math.random() * 2 + 1;
-            this.speedX = (Math.random() - 0.5) * 0.4;
-            this.speedY = (Math.random() - 0.5) * 0.4;
+            this.speedX = (Math.random() - 0.5) * 0.3;
+            this.speedY = (Math.random() - 0.5) * 0.3;
             this.opacity = Math.random() * 0.5 + 0.2;
         }
         update() {
@@ -190,17 +190,17 @@
         }
     }
 
-    const PIG_COUNT = 6;
+    const PIG_COUNT = 4;
     class FlyingPig {
         constructor() {
             this.x = Math.random() * bgWidth;
             this.y = Math.random() * bgHeight;
             this.size = Math.random() * 28 + 20;
-            this.speedX = (Math.random() - 0.5) * 0.3;
-            this.speedY = (Math.random() - 0.5) * 0.3;
+            this.speedX = (Math.random() - 0.5) * 0.2;
+            this.speedY = (Math.random() - 0.5) * 0.2;
             this.opacity = Math.random() * 0.4 + 0.2;
             this.rotation = Math.random() * Math.PI * 2;
-            this.rotationSpeed = (Math.random() - 0.5) * 0.01;
+            this.rotationSpeed = (Math.random() - 0.5) * 0.008;
         }
         update() {
             this.x += this.speedX;
@@ -281,7 +281,7 @@
             container.innerHTML = '<div class="empty-message">Пока нет рекордов. Стань первым!</div>';
             return;
         }
-        let html = '<table><th>Место</th><th>Игрок</th><th>Очки</th><th>Дата</th></tr>';
+        let html = '点<table>\n<thead>\n<th>Место</th><th>Игрок</th><th>Очки</th><th>Дата</th>\n</thead>\n<tbody>';
         leaderboard.forEach((entry, index) => {
             let rankClass = '';
             if (index === 0) rankClass = 'rank-1';
@@ -300,7 +300,7 @@
                          <td>${entry.date || ''}</td>
                       </tr>`;
         });
-        html += '</table>';
+        html += '</tbody></table>';
         container.innerHTML = html;
     }
 
