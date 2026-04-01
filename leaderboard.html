@@ -39,7 +39,7 @@
             border-radius: 48px;
             padding: 30px;
             border: 1px solid rgba(255,107,107,0.5);
-            max-width: 700px;
+            max-width: 800px;
             width: 100%;
             text-align: center;
         }
@@ -103,6 +103,9 @@
             background: rgba(255,107,107,0.4);
             transform: scale(1.02);
         }
+        .file-input {
+            display: none;
+        }
         .back-link {
             margin-top: 20px;
         }
@@ -129,9 +132,12 @@
         <!-- таблица заполняется скриптом -->
     </div>
     <div class="buttons">
-        <button id="resetLeaderboard">Сбросить таблицу</button>
+        <button id="exportBtn">💾 Экспорт</button>
+        <button id="importBtn">📂 Импорт</button>
+        <button id="resetLeaderboard">🗑️ Сбросить таблицу</button>
         <button id="backToGame">← Вернуться в игру</button>
     </div>
+    <input type="file" id="importFile" accept=".pig" style="display:none">
     <div class="back-link">
         <a href="index.html">На главный сайт</a>
     </div>
@@ -273,6 +279,10 @@
         }
     }
 
+    function saveLeaderboard(data) {
+        localStorage.setItem('pigLeaderboard', JSON.stringify(data));
+    }
+
     function loadLeaderboard() {
         const leaderboard = getLeaderboard();
         const container = document.getElementById('leaderboardTable');
@@ -294,11 +304,11 @@
                 return m;
             });
             html += `<tr class="${rankClass}">
-                         <td>${index + 1}</td>
-                         <td>${safeName}</td>
-                         <td>${entry.score}</td>
-                         <td>${entry.date || ''}</td>
-                      </tr>`;
+                          <td>${index + 1}</td>
+                          <td>${safeName}</td>
+                          <td>${entry.score}</td>
+                          <td>${entry.date || ''}</td>
+                       </tr>`;
         });
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -312,9 +322,76 @@
         }
     }
 
+    // Экспорт
+    function exportLeaderboard() {
+        let leaderboard = getLeaderboard();
+        let dataStr = JSON.stringify(leaderboard, null, 2);
+        let blob = new Blob([dataStr], {type: "application/json"});
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = `pigs_leaderboard_${new Date().toISOString().slice(0,19)}.pig`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Импорт
+    function importLeaderboard(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                let imported = JSON.parse(e.target.result);
+                if (!Array.isArray(imported)) throw new Error("Не массив");
+                // проверяем структуру
+                imported = imported.filter(entry => entry && typeof entry.name === 'string' && typeof entry.score === 'number');
+                if (imported.length === 0) {
+                    alert("Файл не содержит корректных рекордов.");
+                    return;
+                }
+                let current = getLeaderboard();
+                // объединяем: сохраняем лучший результат для каждого имени
+                let merged = [...current];
+                for (let newEntry of imported) {
+                    let existing = merged.find(e => e.name === newEntry.name);
+                    if (existing) {
+                        if (newEntry.score > existing.score) {
+                            existing.score = newEntry.score;
+                            existing.date = newEntry.date || existing.date;
+                        }
+                    } else {
+                        merged.push(newEntry);
+                    }
+                }
+                merged.sort((a,b) => b.score - a.score);
+                merged = merged.slice(0, 10);
+                saveLeaderboard(merged);
+                // также обновляем пароли? оставляем как есть
+                loadLeaderboard();
+                alert(`Импортировано ${imported.length} записей. Объединённая таблица обновлена.`);
+            } catch(err) {
+                alert("Ошибка при импорте: неверный формат файла.");
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    document.getElementById('exportBtn').addEventListener('click', exportLeaderboard);
     document.getElementById('resetLeaderboard').addEventListener('click', resetLeaderboard);
     document.getElementById('backToGame').addEventListener('click', () => {
         window.location.href = 'game.html';
+    });
+
+    const importFileInput = document.getElementById('importFile');
+    document.getElementById('importBtn').addEventListener('click', () => {
+        importFileInput.click();
+    });
+    importFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            importLeaderboard(e.target.files[0]);
+            importFileInput.value = '';
+        }
     });
 
     loadLeaderboard();
